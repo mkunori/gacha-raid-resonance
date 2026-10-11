@@ -1,0 +1,2 @@
+# gacha-raid-resonance
+ガチャRPG
