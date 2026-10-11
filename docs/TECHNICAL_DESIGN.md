@@ -116,12 +116,13 @@ Pages Workflowもデプロイ前に同じチェックを実行し、失敗した
 リポジトリSettings → Pages → Build and deploymentのSourceをGitHub Actionsに設定する。
 初回のgithub-pages環境作成・保護設定やActions利用権限はリポジトリ管理側で確認する。
 mainへのpushまたはmainを指定したworkflow_dispatchでdistをPagesに公開する。
-作業ブランチからのデプロイはガードする。今回PRはマージしないため公開はまだ行わない。
+作業ブランチからのデプロイはガードする。Workflowの整備と実際の公開成功は区別し、
+公開状態はGitHub ActionsのDeploy GitHub Pages実行結果と公開URLで確認する。
 
 Vite baseは/gacha-raid-resonance/。
-公開予定URL: https://mkunori.github.io/gacha-raid-resonance/
+公開先URL: https://mkunori.github.io/gacha-raid-resonance/
 ルーターは導入せず単一エントリーとし、このURLでのリロードを想定する。
-後続のPages実公開フェーズでスマホ/PCとリロードを確認する。
+初期基盤のマージ後に公開とアセット取得を確認し、ゲーム完成時にもスマホ/PCの操作とリロードを再確認する。
 
 ## 将来の非同期協力
 

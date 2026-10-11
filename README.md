@@ -44,11 +44,12 @@ CIとクリーンインストールではpackage-lock.jsonに基づくnpm ciを�
 
 ## GitHub Pages
 
-公開予定: [GACHA RAID: RESONANCE](https://mkunori.github.io/gacha-raid-resonance/)（この基盤PRでは未公開）。
+公開先URL: [GACHA RAID: RESONANCE](https://mkunori.github.io/gacha-raid-resonance/)。
+デプロイWorkflowを整備済みです。実際の公開成否はGitHub Actionsの「Deploy GitHub Pages」で確認してください。
 Vite baseは /gacha-raid-resonance/ です。
 リポジトリSettings → Pages → SourceをGitHub Actionsに設定してください。
 mainへのpushで検証後にdistをデプロイし、mainでの手動実行にも対応します。
-作業ブランチからはデプロイしません。今回PRはマージしません。
+作業ブランチからはデプロイしません。
 
 ## 仕様と開発方針
 
