@@ -1,0 +1,18 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #edf3ff;
+  background: #0d1424;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  line-height: 1.7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 280px; }
+main { width: min(100% - 2rem, 760px); margin: clamp(3rem, 12vh, 8rem) auto; }
+.eyebrow { color: #9fb2cf; }
+h1 { font-size: clamp(2rem, 7vw, 3.8rem); line-height: 1.15; letter-spacing: .03em; overflow-wrap: anywhere; }
+h1 span { display: block; color: #76e3d0; }
+section { margin-top: 2.5rem; padding: clamp(1.25rem, 4vw, 2rem); border: 1px solid #344660; border-radius: 1rem; background: #162136; }
+h2 { font-size: clamp(1.2rem, 4vw, 1.5rem); }
+.badge { display: inline-block; margin: 0; padding: .2rem .8rem; border-radius: 2rem; color: #0d1424; background: #76e3d0; font-weight: 700; }
+section p:last-child { color: #bac8df; }
