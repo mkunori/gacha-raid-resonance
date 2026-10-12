@@ -81,6 +81,27 @@ describe('aggregate facts and accessible effects', () => {
 })
 
 describe('boundary notifications preserve battle contracts', () => {
+  it('first-chunk failure keeps the previous confirmed banner without replay or state commit', async () => {
+    let calls = 0
+    const rng = vi.fn(() => { if (++calls === 4) throw new Error('first chunk failed'); return .999 })
+    const controller = createBattleController({ initialState: initial(), rng, yieldFrame: frame })
+    render(<StrictMode><App controller={controller} /></StrictMode>)
+    await act(async () => { await controller.start({ kind: 'normal', count: 1 }) })
+    const before = controller.getSnapshot()
+    const banner = document.querySelector('.result-highlight')
+    expect(banner).toBeTruthy()
+    await act(async () => { expect(await controller.start({ kind: 'normal', count: 10 })).toBe(false) })
+    const failed = controller.getSnapshot()
+    expect(failed.highlight).toBe(before.highlight)
+    expect(failed.state).toBe(before.state)
+    expect(failed.result).toBeNull()
+    expect(failed.busy).toBe(false)
+    expect(document.querySelector('.result-highlight')).toBe(banner)
+    expect(screen.getByRole('alert').textContent).toContain('first chunk failed')
+    expect(screen.getByText(/最初のチャンクで失敗した操作の結果ではありません/)).toBeTruthy()
+    expect(screen.getByRole('status', { name: '結果ハイライト' }).textContent).toContain('SSR獲得 1回')
+    expect(rng).toHaveBeenCalledTimes(4)
+  })
   it.each([1, 10, 100, 1000] as const)('NORMAL x%s yields exactly one final highlight regardless of chunks', async count => {
     const state = initial(); const rng = vi.fn(seededRng(234))
     const controller = createBattleController({ initialState: state, rng, chunkSize: 7, yieldFrame: frame })

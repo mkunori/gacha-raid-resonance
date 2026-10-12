@@ -106,6 +106,7 @@ BattleSnapshot.highlightはUI専用の`{ id, result: ResultSummary } | null`。G
 各start/resume呼び出し内で、成功したチャンクのsummaryだけを固定サイズで結合し、完了・10,000安全一時停止・エラー停止のfinallyで一度publishする。
 従来のresultは操作全体の累積を維持し、highlightはその呼び出しの増分のみ。再開前のSSR/共鳴/JACKPOTやclearedGameの累積ORを再通知しない。
 成功チャンク0の失敗では以前のhighlight参照/idを維持する。破棄時は既存abort契約に従い、古い非同期処理から通知しない。
+画面は「直近の確定結果」と明示し、新しい確定分のない失敗では以前の結果が残る旨をライブ領域の外に説明する。以前のバナーを再生成・再通知しない。
 購入/RESPEC/Focus変更でもhighlightを更新しない。RNG・戦闘コア・チャンク処理・排他・安全上限の意味は変更しない。
 
 highlightFactsは集計からSSR・共鳴種別・CHAIN件数/追加数・JACKPOT・SPECIAL全種類・討伐・初回クリアの事実だけを生成する表示専用関数。
@@ -119,6 +120,7 @@ OSのprefers-reduced-motionはCSSで尊重し、表示設定の変更はbusy中�
 StatisticsPanelはstate.statisticsとhighestStageを直接参照し、NORMAL/SPECIAL/SSR/3共鳴/討伐/JACKPOT/最高Stageを静的に表示する。
 直前結果と見出しを分け、存在しない生涯CHAIN数などは追加しない。RESPECやFocus変更でも統計は保持される。
 実機タッチ・長時間高負荷・総合UXは7-D、保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
+Phase 8ではreducedEffectsを永続化し、保存復元時に達成済みクリア演出を再発行せず、過去のPULLハイライトを新規結果として再通知しない契約を維持する。
 
 ## GameState案
 
