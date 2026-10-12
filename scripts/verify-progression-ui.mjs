@@ -4,6 +4,7 @@ const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXEC
 try {
   const touch = process.env.UI_TOUCH === '1';
   const page = await browser.newPage({ hasTouch: touch, isMobile: touch });
+  await page.addInitScript(() => localStorage.removeItem('gacha-raid-resonance:save'));
   const activate = locator => touch ? locator.tap() : locator.click();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -80,10 +81,10 @@ try {
     const dimensions = await page.evaluate(() => ({ viewport: innerWidth, scroll: document.documentElement.scrollWidth }));
     if (dimensions.scroll > width) throw new Error('Horizontal overflow');
     const toggle = page.getByLabel('演出軽減', { exact: true });
-    const beforeDisplay = await page.evaluate(() => JSON.stringify(window.progressionTest.getSnapshot()));
+    const beforeDisplay = await page.evaluate(() => JSON.stringify({ ...window.progressionTest.getSnapshot(), settings: null }));
     await toggle.focus(); await page.keyboard.press('Space');
     if (!(await toggle.isChecked())) throw new Error('Checkbox Space failed');
-    if (await page.evaluate(() => JSON.stringify(window.progressionTest.getSnapshot())) !== beforeDisplay) throw new Error('Display mutated battle');
+    if (await page.evaluate(() => JSON.stringify({ ...window.progressionTest.getSnapshot(), settings: null })) !== beforeDisplay) throw new Error('Display mutated battle');
     await page.screenshot({ path: `node_modules/.browser-check/progression-${width}.png`, fullPage: true });
     console.log(JSON.stringify({ width, ...dimensions, touch, dialog: dialogRect, text200: 'pass', purchase: 'pass', doubleClick: 'pass', fourFocus: 'pass', keyboard: 'pass', modal: 'pass', escape: 'pass', refund: 'pass', normalSpecialSequence: 'pass' }));
   }

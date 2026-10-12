@@ -27,7 +27,7 @@ describe('battle UI and unlocks', () => {
     expect(button('NORMAL ×1000').textContent).toContain('Stage 50')
     expect(button('SPECIAL ×1').disabled).toBe(true)
     expect(button('SPECIAL ×MAX').textContent).toContain('Stage 10')
-    expect(screen.getByText(/再読込すると最初から/)).toBeTruthy()
+    expect(screen.getByText(/自動保存は未接続.*検証用/)).toBeTruthy()
     expect(screen.getByRole('progressbar').getAttribute('aria-valuetext')).toBe('1,100 / 1,100')
     for (const attribute of ['FIRE', 'WIND', 'THUNDER']) expect(screen.getByText(attribute)).toBeTruthy()
   })
