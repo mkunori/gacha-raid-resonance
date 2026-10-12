@@ -25,7 +25,7 @@ export default function App({ controller: suppliedController }: { controller?: B
       <UpgradePanel snapshot={snapshot} controller={controller} />
       <FocusPanel snapshot={snapshot} controller={controller} />
       <StatisticsPanel state={snapshot.state} />
-      <footer>保存機能は今後追加します。</footer>
+      <footer><a className="return-to-pull" href="#pull-title">PULLへ戻る</a><p>保存機能は今後追加します。</p></footer>
     </main>
   )
 }

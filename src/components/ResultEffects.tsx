@@ -10,7 +10,7 @@ export function ResultEffects({ highlight }: { highlight: BattleSnapshot['highli
   const reduced = settings.reducedEffects || skippedId === highlight?.id
   return <section aria-labelledby="effects-title">
     <h2 id="effects-title">結果ハイライト・表示設定</h2>
-    <label><input type="checkbox" checked={settings.reducedEffects} onChange={(event) => setSettings({ reducedEffects: event.target.checked })} /> 演出軽減</label>
+    <label className="effects-toggle"><input type="checkbox" checked={settings.reducedEffects} onChange={(event) => setSettings({ reducedEffects: event.target.checked })} /> 演出軽減</label>
     <p className="muted">OSの動きを減らす設定も尊重します。設定は再読込で初期化されます。スキップしても結果テキストと戦闘処理は維持します。</p>
     <button disabled={!facts.length} onClick={() => setSkippedId(highlight?.id ?? null)}>演出をスキップ</button>
     <p className="muted">新しい確定分がない場合は以前の結果を表示します。最初のチャンクで失敗した操作の結果ではありません。</p>

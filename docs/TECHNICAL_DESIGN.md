@@ -119,8 +119,18 @@ OSのprefers-reduced-motionはCSSで尊重し、表示設定の変更はbusy中�
 設定は再読込で初期化し、Phase 8でSaveDataV1.settingsへの保存を検討する。
 StatisticsPanelはstate.statisticsとhighestStageを直接参照し、NORMAL/SPECIAL/SSR/3共鳴/討伐/JACKPOT/最高Stageを静的に表示する。
 直前結果と見出しを分け、存在しない生涯CHAIN数などは追加しない。RESPECやFocus変更でも統計は保持される。
-実機タッチ・長時間高負荷・総合UXは7-D、保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
+総合UX・高負荷は下記7-Dで検証済み（実機タッチ・数時間の実測は未検証）。保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
 Phase 8ではreducedEffectsを永続化し、保存復元時に達成済みクリア演出を再発行せず、過去のPULLハイライトを新規結果として再通知しない契約を維持する。
+
+### Phase 7-Dの検証と小規模UX調整（Issue #21）
+
+verify-ux-performance.mjsはローカル専用Fixture・固定RNGで6幅/文字200%と高負荷/再開を検証する。
+GameState/summary/RNGをコアの別ストリームと毎回照合し、React Profiler、rAF、CDPメモリ/DOM/リスナー、setTimeout、Controller購読を計測する。
+タイミングの固定msを合否条件にせず、結果一致と描画機会・有限集計・購読解除を検証する。測定条件と限界はUI_VERIFICATIONを参照。
+verify-progression-ui.mjsはUI_WIDTHS/UI_TOUCHで6幅・tapも再現可能。既定の3幅・マウス/キーボード確認も維持する。
+文字拡大時のタイトル折返し、演出軽減ラベル44px、末尾のPULL見出しへのアンカーを追加した。
+戻り先はtabIndex=-1でフォーカス可能にし、TabでNORMAL×1へ戻れる。ゲーム状態/RNG/チャンクの変更はない。
+実機モバイルとスクリーンリーダーの音声・低速端末の長時間評価は未実施。保存の先行実装はしない。
 
 ## GameState案
 

@@ -8,7 +8,7 @@ export function PullControls({ controller, snapshot }: { controller: BattleContr
   const pending = state.pendingNormalPulls + state.pendingSpecialPulls
   const unavailable = busy || pending > 0
   return <section aria-labelledby="pull-title">
-    <h2 id="pull-title">PULL</h2>
+    <h2 id="pull-title" tabIndex={-1}>PULL</h2>
     <p className="eyebrow">NORMAL / CHAINを含めて実行</p>
     <div className="normal-buttons">{([1, 10, 100, 1000] as const).map((count) => {
       const unlocked = isFeatureUnlocked(state, `NORMAL_${count}`)
