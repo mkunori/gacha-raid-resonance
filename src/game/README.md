@@ -5,7 +5,8 @@
 手動SPECIAL・固定回数の×MAXと再開・Stage20以降のJACKPOTも実装済み。
 特殊ボス補正、Stage解放、フォーカス変更、Stage50クリアと51以降の継続もコアに実装済み。
 RS手動1Lv購入、価格/購入情報、支払台帳と無料の全額返還RESPECも実装済み。
-UI・保存への接続はなく、未実装関数のダミーや空モジュールは置かない。
+Phase 7-Aの基本戦闘UIから一括/再開APIを利用する。強化/Focus変更UI・保存は未接続。
+未実装関数のダミーや空モジュールは置かない。
 
 | モジュール | 責務 |
 | --- | --- |
@@ -42,7 +43,11 @@ resolveResonancesは末尾の任意stage（既定1）で元ボスの共鳴補正
 NORMAL/SPECIALも元Stageの補正を適用し、JACKPOTは独立する。全討伐遷移はPULL終了後。
 初回Stage50撃破はboss-defeated → game-cleared → stage-started(51)。hasClearedGameはhighestStage>=51を判定する。
 バッチsummary.clearedGameは当該呼び出しのクリア発生のみを示し、分割集計はORで結合する。
-クリア後も予約を継続し、51以降は通常倍率。UI・保存は後続フェーズ。
+クリア後も予約を継続し、51以降は通常倍率。UIはクリア済み状態を簡易表示し、保存はPhase 8。
+
+UIのbattleControllerは100実PULLのチャンクで新規/再開APIを呼び、同じRNGを継続する。
+各成功チャンクのみ確定し、例外時は最後の状態を保持する。消費済みRNGは巻き戻さない。
+保留中の新規操作を拒否し、画面破棄時は待機を中止する。集計のみ結合し全イベントは保存しない。
 
 `getUpgradeInfo(state, upgrade)`は現Lv・次価格・解放可否・保有RS・対象支払額・購入可否と理由を返す。
 理由はPENDING_PULLS、LOCKED、NUMERIC_LIMIT、INSUFFICIENT_RSの順で判定し、購入可能ならnull。不正stateはRangeError。
