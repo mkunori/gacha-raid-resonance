@@ -43,3 +43,19 @@ Pages本番の画面と動作はmainのデプロイ後に公開URLで確認す�
 - pageerror 0件。既存verify-battle-ui.mjsも再実行し、3画面幅のNORMAL×1/×10、1000連＋CHAIN、SPECIAL×MAXが成功。
 - 既存1000連の参考測定は1,042実PULL・約196ms・描画27フレーム・ストア通知13回・summary JSON 301 bytes。育成UI追加後も集計は有限サイズ。
 - 実機タッチの総合評価・長時間負荷は7-D、保存はPhase 8。本番への反映はmainのPagesデプロイで行い、公開画面はデプロイ後に確認する。
+
+## Phase 7-C 画面確認（Issue #19 / 2026-10-12）
+
+同じローカル準備・開発サーバー・Edge実行ファイル指定で`node scripts/verify-effects-ui.mjs`を実行する。
+製品の初期状態を確認後、別の検証用StrictModeルートへStage20・最高Stage50・固定RNG・JACKPOT直前区間を注入する。
+Stage50初回クリアの確認には別Controller（HP1）を使用する。製品にチート・URLパラメーター・保存は追加しない。
+
+- Edgeヘッドレス、幅320/375/1280px・高さ900pxでSSR/共鳴/JACKPOTの実コア集計表示、累積NORMAL数、SPECIAL MEGA_BURSTを確認。
+- 軽減ON/OFF、OS reduced-motion、スキップでanimationNameがnoneとなり、Controllerのsnapshotが一切変化しないことを確認。重要テキストは維持。
+- Stage50初回クリアバナーと51以降の継続を確認し、次操作では初回演出を再表示しない。
+- 横スクロールなし、pageerror 0件。スクリーンショットは無視対象node_modules/.browser-checkのeffects/clear-{width}.pngへ出力。
+- 10,000実PULL停止/再開の通知増分、巨大SPECIAL予約、失敗チャンク除外、StrictMode・アンマウントはVitestで検証。
+- 既存のverify-battle-ui.mjsとverify-progression-ui.mjsも3幅すべてで再成功。1000連＋CHAINは1,042実PULL・約197ms・28フレーム・通知13回・summary JSON 301 bytes（環境依存の参考値）。375pxのハイライト/累積統計スクリーンショットも目視確認。
+- npm ci/typecheck/lint/test/build成功。既存915件＋追加29件＝944件、19テストファイル成功。実機タッチ・長時間/総合UXは7-D、永続化はPhase 8に残す。
+- 最終レビューで最初のチャンク失敗時のテストを1件追加。以前のバナー参照/idを維持して再通知せず、「直近の確定結果」であり失敗操作の結果ではない旨を表示する。
+- 最終レビュー後は945件成功。指定5コマンドと上記3スクリプトを再実行し、全3幅で成功・pageerror 0件を確認。
