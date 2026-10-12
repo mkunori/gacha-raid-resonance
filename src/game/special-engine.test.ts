@@ -101,23 +101,26 @@ describe('manual SPECIAL step', () => {
   })
 })
 
+const chargedMax = (gauge = 30) => ({ ...charged(gauge), stage: 11, highestStage: 11, bossHp: calculateBossMaxHp(11) })
+
 describe('SPECIAL MAX and resumable reservation', () => {
   it('reserves at start, crosses stages, discards overkill and keeps the gauge remainder', () => {
-    const state = charged(91)
+    const state = chargedMax(91)
     state.bossHp = 1
+    state.upgradeLevels.PULL_POWER = 25
     const rng = vi.fn(sequenceRng([0.95, 0.95, 0.95]))
     const result = executeSpecialPulls(freezeDeep(state), 'MAX', rng)
-    expect(result.state.stage).toBe(3)
-    expect(result.state.bossHp).toBe(calculateBossMaxHp(3))
+    expect(result.state.stage).toBe(14)
+    expect(result.state.bossHp).toBe(calculateBossMaxHp(14))
     expect(result.state.specialGauge).toBe(1)
     expect(result.state.pendingSpecialPulls).toBe(0)
     expect(result.summary).toEqual({ actualPulls: 3, pendingPulls: 0, gaugeSpent: 90,
-      stagesAdvanced: 2, earnedShards: calculateBossReward(1) + calculateBossReward(2),
+      stagesAdvanced: 3, clearedGame: false, earnedShards: calculateBossReward(11) + calculateBossReward(12) + calculateBossReward(13),
       resultCounts: { STRIKE: 0, BURST: 0, MEGA_BURST: 3 } })
     expect(rng).toHaveBeenCalledTimes(3)
   })
   it.each([1, 7, 31])('matches MAX, x1 repetition and chunks of %s on seed 42, including summaries', (limit) => {
-    const initial = charged(30 * 101 + 17)
+    const initial = chargedMax(30 * 101 + 17)
     const batchRng = vi.fn(seededRng(42))
     const full = executeSpecialPulls(initial, 'MAX', batchRng)
     const stepRng = vi.fn(seededRng(42))
@@ -145,7 +148,7 @@ describe('SPECIAL MAX and resumable reservation', () => {
     expect(rng()).toBe(batchRng())
   })
   it('never recalculates the reservation on resume, even with additional gauge', () => {
-    const paused = executeSpecialPulls(charged(90), 'MAX', () => 0, 1).state
+    const paused = executeSpecialPulls(chargedMax(90), 'MAX', () => 0, 1).state
     expect(paused.pendingSpecialPulls).toBe(2)
     const updated = { ...paused, specialGauge: paused.specialGauge + 60 }
     const result = resumePendingSpecialPulls(updated, () => 0)
@@ -153,7 +156,7 @@ describe('SPECIAL MAX and resumable reservation', () => {
     expect(result.state.specialGauge).toBe(60)
   })
   it('stops exactly at 100,000 with a completed SPECIAL, keeps fixed remainder and bounds output', () => {
-    const state = freezeDeep(charged(100_001 * 30 + 17))
+    const state = freezeDeep(chargedMax(100_001 * 30 + 17))
     const rng = vi.fn(() => 0)
     const result = executeSpecialPulls(state, 'MAX', rng)
     expect(result.summary.actualPulls).toBe(100_000)
@@ -171,12 +174,12 @@ describe('SPECIAL MAX and resumable reservation', () => {
     expect(state.specialGauge).toBe(3_000_047)
   })
   it('accepts MAX_SAFE_INTEGER gauge without allocating an array per reservation', () => {
-    const result = executeSpecialPulls(charged(Number.MAX_SAFE_INTEGER), 'MAX', () => 0, 1)
+    const result = executeSpecialPulls(chargedMax(Number.MAX_SAFE_INTEGER), 'MAX', () => 0, 1)
     expect(result.state.pendingSpecialPulls).toBe(Math.floor(Number.MAX_SAFE_INTEGER / 30) - 1)
     expect(result.state.specialGauge).toBe(Number.MAX_SAFE_INTEGER - 30)
   })
   it('resumes an empty SPECIAL queue without RNG or modifying state', () => {
-    const state = freezeDeep(charged(90))
+    const state = freezeDeep(chargedMax(90))
     const rng = vi.fn(() => 0)
     const result = resumePendingSpecialPulls(state, rng)
     expect(result.state).toBe(state)
@@ -188,7 +191,7 @@ describe('SPECIAL MAX and resumable reservation', () => {
 
 describe('SPECIAL queue guards and atomic failure', () => {
   it('rejects all NORMAL entry points and new SPECIAL actions during pending SPECIAL', () => {
-    const state = executeSpecialPulls(charged(90), 'MAX', () => 0, 1).state
+    const state = executeSpecialPulls(chargedMax(90), 'MAX', () => 0, 1).state
     const before = structuredClone(state)
     const rng = vi.fn(() => 0)
     expect(() => executeNormalPull(freezeDeep(state), rng)).toThrow(RangeError)
@@ -200,7 +203,7 @@ describe('SPECIAL queue guards and atomic failure', () => {
     expect(state).toEqual(before)
   })
   it('rejects all SPECIAL entry points during pending NORMAL/CHAIN', () => {
-    const state = executeNormalPulls(charged(90), 1, sequenceRng([0, 0, 0.93]), 1).state
+    const state = executeNormalPulls(chargedMax(90), 1, sequenceRng([0, 0, 0.93]), 1).state
     const rng = vi.fn(() => 0)
     expect(() => executeSpecialPull(state, rng)).toThrow(RangeError)
     expect(() => executeSpecialPulls(state, 1, rng)).toThrow(RangeError)
@@ -209,13 +212,13 @@ describe('SPECIAL queue guards and atomic failure', () => {
     expect(rng).not.toHaveBeenCalled()
   })
   it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 3])('rejects invalid or unaffordable pending count %s', (pending) => {
-    const state = { ...charged(60), pendingSpecialPulls: pending }
+    const state = { ...chargedMax(60), pendingSpecialPulls: pending }
     const rng = vi.fn(() => 0)
     expect(() => resumePendingSpecialPulls(freezeDeep(state), rng)).toThrow(RangeError)
     expect(rng).not.toHaveBeenCalled()
   })
   it('rejects simultaneous NORMAL and SPECIAL queues before RNG', () => {
-    const state = { ...charged(60), pendingSpecialPulls: 1, pendingNormalPulls: 1, normalPullQueue: { base: 1, chain: 0 } }
+    const state = { ...chargedMax(60), pendingSpecialPulls: 1, pendingNormalPulls: 1, normalPullQueue: { base: 1, chain: 0 } }
     const rng = vi.fn(() => 0)
     expect(() => resumePendingSpecialPulls(state, rng)).toThrow(/coexist/)
     expect(() => resumePendingNormalPulls(state, rng)).toThrow(/coexist/)
@@ -223,17 +226,17 @@ describe('SPECIAL queue guards and atomic failure', () => {
   })
   it.each([0, -1, 1.5, 100_001, NaN, Infinity])('rejects invalid SPECIAL limit %s before RNG', (limit) => {
     const rng = vi.fn(() => 0)
-    expect(() => executeSpecialPulls(charged(), 'MAX', rng, limit)).toThrow(RangeError)
-    expect(() => resumePendingSpecialPulls(charged(), rng, limit)).toThrow(RangeError)
+    expect(() => executeSpecialPulls(chargedMax(), 'MAX', rng, limit)).toThrow(RangeError)
+    expect(() => resumePendingSpecialPulls(chargedMax(), rng, limit)).toThrow(RangeError)
     expect(rng).not.toHaveBeenCalled()
   })
   it.each([0, 2, 'bad', NaN])('rejects invalid SPECIAL action %s before RNG', (count) => {
     const rng = vi.fn(() => 0)
-    expect(() => executeSpecialPulls(charged(), count as SpecialPullCount, rng)).toThrow(RangeError)
+    expect(() => executeSpecialPulls(chargedMax(), count as SpecialPullCount, rng)).toThrow(RangeError)
     expect(rng).not.toHaveBeenCalled()
   })
   it.each(['special count', 'RS', 'boss count', 'SPECIAL damage'] as const)('rejects %s overflow without input mutation', (field) => {
-    const state = charged()
+    const state = chargedMax()
     if (field === 'special count') state.statistics.totalSpecialPulls = Number.MAX_SAFE_INTEGER
     if (field === 'RS') { state.resonanceShards = Number.MAX_SAFE_INTEGER; state.bossHp = 1 }
     if (field === 'boss count') { state.statistics.bossesDefeated = Number.MAX_SAFE_INTEGER; state.bossHp = 1 }
@@ -243,10 +246,10 @@ describe('SPECIAL queue guards and atomic failure', () => {
     expect(state).toEqual(before)
   })
   it('rejects invalid RNG in a later SPECIAL without returning partial state or rolling RNG back', () => {
-    const state = freezeDeep(charged(90))
+    const state = freezeDeep(chargedMax(90))
     const rng = vi.fn(sequenceRng([0, NaN]))
     expect(() => executeSpecialPulls(state, 'MAX', rng)).toThrow(RangeError)
-    expect(state).toEqual(charged(90))
+    expect(state).toEqual(chargedMax(90))
     expect(rng).toHaveBeenCalledTimes(2)
   })
 })

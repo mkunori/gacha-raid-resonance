@@ -60,6 +60,9 @@ export const CORE_RULES = {
   jackpotGaugeGain: 30,
 } as const
 
+/** First defeat records clear; subsequent stages continue with ordinary bosses. */
+export const GAME_CLEAR_STAGE = 50
+
 /** Stage 5 defeat is represented as arrival at Stage 6. */
 export const UNLOCK_STAGES = {
   resonancePower: 6, focus: 6, specialPower: 8, specialMax: 10,

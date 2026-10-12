@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { calculateBossMaxHp } from './boss'
 import { CORE_RULES } from '../data/rules'
 import { seededRng, sequenceRng } from '../test/random'
 import type { GameState, NormalPullCount } from '../types/game'
@@ -12,10 +13,13 @@ function freezeDeep<T>(value: T): T {
   return value
 }
 
+// Neutral unlocked stage for batching tests; Stage-1 boundary tests stay unchanged.
+const unlockedState = () => ({ ...createInitialGameState(), stage: 51, highestStage: 51, bossHp: calculateBossMaxHp(51) })
+
 describe('NORMAL PULL actions and CHAIN queue', () => {
   it.each([1, 10, 100, 1000] as const)('executes x%s without CHAIN, three RNG calls per pull', (count) => {
     const rng = vi.fn(() => 0)
-    const input = freezeDeep(createInitialGameState())
+    const input = freezeDeep(unlockedState())
     const result = executeNormalPulls(input, count, rng)
     expect(result.summary.actualPulls).toBe(count)
     expect(result.summary.effectCounts.NONE).toBe(count)
@@ -23,7 +27,7 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     expect(result.state.normalPullQueue).toEqual({ base: 0, chain: 0 })
     expect(result.state.statistics.totalNormalPulls).toBe(count)
     expect(rng).toHaveBeenCalledTimes(count * 3)
-    expect(input).toEqual(createInitialGameState())
+    expect(input).toEqual(unlockedState())
   })
   it('rechains with ordinary draws, drains all descendants and carries them across defeat', () => {
     const input = createInitialGameState()
@@ -32,7 +36,7 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     const rng = vi.fn(sequenceRng([0, 0, 0.93, 0.99, 0, 0.93, ...Array(15).fill(0)]))
     const result = executeNormalPulls(input, 1, rng)
     expect(result.summary).toEqual({
-      actualPulls: 7, chainAdded: 6, pendingPulls: 0, stagesAdvanced: 1, earnedShards: 18, ssrCount: 1, jackpotCount: 0,
+      actualPulls: 7, chainAdded: 6, pendingPulls: 0, stagesAdvanced: 1, clearedGame: false, earnedShards: 18, ssrCount: 1, jackpotCount: 0,
       resonanceCounts: { FLAME_STORM: 0, THUNDER_STORM: 0, OVERLOAD: 0 },
       effectCounts: { NONE: 5, CHAIN: 2, CHARGE: 0, BOOST: 0 },
     })
@@ -51,7 +55,7 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     expect(result.state.pendingNormalPulls).toBe(9)
   })
   it.each([1, 10, 100, 1000] as const)('matches %s consecutive x1 actions with CHAIN on seed 0x12345678', (count) => {
-    const initial = createInitialGameState()
+    const initial = unlockedState()
     const batched = executeNormalPulls(initial, count, seededRng(0x12345678))
     const rng = seededRng(0x12345678)
     let state = initial
@@ -68,8 +72,8 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     expect(chainAdded).toBe(batched.summary.chainAdded)
   })
   it('matches atomic single-step replay and event aggregates', () => {
-    const batch = executeNormalPulls(createInitialGameState(), 100, seededRng(123))
-    let state = createInitialGameState()
+    const batch = executeNormalPulls(unlockedState(), 100, seededRng(123))
+    let state = unlockedState()
     state.normalPullQueue.base = state.pendingNormalPulls = 100
     const rng = seededRng(123)
     const effects = { NONE: 0, CHAIN: 0, CHARGE: 0, BOOST: 0 }
@@ -87,9 +91,9 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     expect(resonances).toEqual(batch.summary.resonanceCounts)
   })
   it.each([1, 7, 100])('resumes chunks of %s with JSON-roundtripped state and the same RNG continuation', (limit) => {
-    const full = executeNormalPulls(createInitialGameState(), 1000, seededRng(42))
+    const full = executeNormalPulls(unlockedState(), 1000, seededRng(42))
     const rng = seededRng(42)
-    let chunk = executeNormalPulls(freezeDeep(createInitialGameState()), 1000, rng, limit)
+    let chunk = executeNormalPulls(freezeDeep(unlockedState()), 1000, rng, limit)
     let actual = chunk.summary.actualPulls
     let chain = chunk.summary.chainAdded
     let rs = chunk.summary.earnedShards
@@ -118,16 +122,18 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     expect(resonances).toEqual(full.summary.resonanceCounts)
   })
   it('crosses multiple bosses and reports the exact RS and stage differences', () => {
-    const result = executeNormalPulls(createInitialGameState(), 1000, seededRng(22))
+    const initial = unlockedState()
+    initial.upgradeLevels.PULL_POWER = 90
+    const result = executeNormalPulls(initial, 1000, seededRng(22))
     expect(result.summary.stagesAdvanced).toBeGreaterThan(1)
-    expect(result.summary.stagesAdvanced).toBe(result.state.stage - 1)
+    expect(result.summary.stagesAdvanced).toBe(result.state.stage - initial.stage)
     expect(result.summary.earnedShards).toBe(result.state.resonanceShards)
     expect(result.summary.ssrCount).toBe(result.state.statistics.ssrCount)
   })
   it('stops at exactly 100,000 actual pulls with adversarial CHAIN, bounded output and resumable state', () => {
     let draws = 0
     const rng = () => ++draws % 3 === 0 ? 0.93 : 0
-    const input = freezeDeep(createInitialGameState())
+    const input = freezeDeep(unlockedState())
     const result = executeNormalPulls(input, 1000, rng)
     expect(result.summary.actualPulls).toBe(CORE_RULES.operationPullLimit)
     expect(draws).toBe(300_000)
@@ -139,7 +145,7 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     const next = resumePendingNormalPulls(freezeDeep(result.state), () => 0, 1)
     expect(next.state.normalPullQueue).toEqual({ base: 999, chain: 200_000 })
     expect(result.state.pendingNormalPulls).toBe(201_000)
-    expect(input).toEqual(createInitialGameState())
+    expect(input).toEqual(unlockedState())
   })
   it('stops at a completed PULL, including its defeat, CHARGE and reward', () => {
     const state = createInitialGameState()

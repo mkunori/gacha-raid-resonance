@@ -10,8 +10,9 @@ UI非依存の通常ガチャ独立抽選・H1、基本ダメージ、3共鳴、
 ボスHP・撃破RS・次Stage進行を実装済みです。FLAME/THUNDERの予約効果とOVERLOADのゲージ獲得に対応します。
 H2触媒、CHAIN/CHARGE/BOOST、×1/10/100/1000の一括NORMAL PULLと中断・再開も実装済みです。
 手動SPECIAL（単発/開始時回数固定の×MAXと再開）、Stage 20以降のJACKPOTもコアに実装済みです。
-戦闘画面への接続、Stage別の解放制御、Stage 1〜50の完成、
-特殊ボス、強化・RESPEC、localStorage保存・JSON Export/Import・統計を今後追加します。
+Stage 1〜50の戦闘ルールとして、10種の特殊ボス補正、Stage別解放、フォーカス切替、Stage 50クリア判定もコアに実装済みです。
+Stage 50撃破時に一度だけクリアを通知し、残りPULLを保持してStage 51以降の通常ボスへ進めます。
+戦闘画面・クリア画面への接続、強化購入・RESPEC、localStorage保存・JSON Export/Import・統計表示を今後追加します。
 PC・スマートフォン対応の静的Webアプリです。サーバー・認証は使用しません。
 
 ## 採用技術
@@ -49,6 +50,7 @@ Vitestは確率データ、全抽選境界、独立抽選・乱数消費順と�
 ダメージ式、共鳴順・バフ寿命、触媒/BOOSTの乗算、ゲージ、討伐遷移、
 CHAIN再連鎖、一括/単発一致、100,000実PULL上限、中断・再開、数値オーバーフローを検証します。
 SPECIAL独立抽選の境界・火力・予約回数・キュー排他と、JACKPOTのStage境界・SSR閾値・区間/集計も検証します。
+全10特殊ボスのチャネル別補正・複合乗算、解放境界と未解放拒否、Focus切替、Stage50クリア・予約持ち越し・51以降の継続も検証します。
 
 ## GitHub Pages
 
@@ -69,4 +71,4 @@ mainへのpushで検証後にdistをデプロイし、mainでの手動実行に�
 仕様の正本はdocs/GAME_SPEC.mdです。Issue #1は仕様作成履歴として参照し、実装は個別Issueで追跡します。
 仕様・実装・テストの整合性を各PRで保ちます。
 数値や計算式は独断で変更せず、仮定や確認事項を明示します。
-次はPhase 5の特殊ボス・Stage解放・Stage 50終端仕様を別Issue・別PRで扱います。
+次はPhase 6のRS強化購入・RESPECを別Issue・別PRで扱います。

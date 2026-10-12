@@ -266,7 +266,7 @@ NumPy/Numbaのモデルで各条件240試行。**プレイ時間・演出時間�
 
 - 出典: https://github.com/mkunori/gacha-raid-resonance/issues/1
 - 原文更新日時: 2026-10-11T23:27:45Z。上記1〜13章はIssue本文をそのまま保存したもの。原文のチェックリストはゲーム完成時の条件であり、今回の基盤PRの完了状態ではない。
-- Stage 50撃破後の遷移・終了表示・Stage 51の扱いは未規定。対象1〜50と×1000解放の両立を含め、Stage進行実装前に確認する。
+- Stage 50撃破後のクリア記録・Stage 51以降の継続はIssue #11で確定した（第17章）。クリア画面の表示はUIフェーズで扱う。
 - SPECIAL GAUGEの上限は未規定。勝手な上限は設けず、ゲーム実装前に確認する。
 - 100,000安全上限の再開操作はIssue #7で確定した（第15章）。実際の永続化・RNG状態保存は保存フェーズで扱う。
 - SPECIAL ×MAXの回数固定・操作排他はIssue #9で確定した（第16章）。
@@ -303,4 +303,37 @@ Issue #1はCLOSEDの仕様作成履歴として維持する。仕様変更が必
 - CHAINも1実PULLとして計測し、操作・分割再開・ボス討伐・Stage遷移を跨いで区間を維持する。SPECIALでは進めない。
 - 100件目のSSRも含め3個以上ならJACKPOTを1回発動し、現在A×180の独立ダメージとゲージ+30を付与する。条件未達も含め、100件目の判定後は両カウンターをゼロへ戻す。
 - 判定はNORMAL追加効果の後・討伐確定の前。すでにHP<=0でも元StageでJACKPOTを完了する。1実PULLにつき最大1区間判定で、JACKPOTからNORMAL/SPECIALを自動実行しない。
-- JACKPOTのStage 20開始判定だけはPhase 4で実装する。SPECIAL ×MAXのStage 10ガード、他の解放・特殊ボス補正・Stage 50終端はPhase 5で扱う。
+- Phase 4ではJACKPOTのStage 20開始判定を先行実装した。SPECIAL ×MAXのStage 10ガード、他の解放・特殊ボス補正・Stage 50クリア後の継続は第17章に従いPhase 5で実装する。
+
+## 17. 特殊ボス・Stage解放・Stage 50クリア（Issue #11で確定）
+
+出典: https://github.com/mkunori/gacha-raid-resonance/issues/11 。第1〜13章のv0.6原文・既存確率・倍率・HP/RS式・強化コストは変更しない。
+
+### 補正の適用境界
+
+- 第5章の10種を設定データに集約する。各実PULLの開始時StageでNORMAL属性別・共鳴種類別・SPECIAL補正を選択し、そのPULLの全処理を元ボスへ適用する。
+- Stage 35の全通常×0.75×0.85、Stage 40のFIRE通常×0.5×1.7、THUNDER STORM×1.5×0.7はそれぞれ乗算。既存FLAME・THUNDER予約・CATALYST・BOOSTとも乗算し、途中丸めをしない。
+- OVERLOADゲージはStage 25/45のみ+24、Stage 35を含む他Stageでは+12。基本+1、CHARGE+5は別に加算し、イベントには実際の増分を記録する。
+- JACKPOT A×180は独立チャネルであり、NORMAL・共鳴・SPECIAL補正を適用しない。
+- 表にないStageとStage 51以降は通常ボス（全チャネル倍率1、OVERLOAD+12）。HP・RSは既存共通式を継続する。ボス名・特性説明・倍率をUI用の読み取り専用データとして取得できる。
+
+### 解放とフォーカス
+
+- 解放判定は単調増加するhighestStageで復元する。初期はNORMAL×1/×10、SPECIAL単発、基本3共鳴、PULL POWER。
+- RESONANCE POWERと属性フォーカスはStage 5撃破＝Stage 6到達、SPECIAL POWERはStage 8、SPECIAL×MAXはStage 10、NORMAL×100はStage 15、JACKPOTはStage 20、NORMAL×1000はStage 50到達で解放する。
+- 新規操作APIは未解放の回数を状態変更・RNG消費なしで拒否する。予約済みキューの再開時には回数の解放を再判定しない。
+- Stage 6未到達はBALANCED固定。不正な非BALANCED状態は戦闘入力検証で拒否する。解放後は4種類を無料で切り替えられる。BALANCEDの指定は未解放時も許可する。
+- フォーカス変更はNORMAL/SPECIALの両キューが空のときのみ許可し、保留中は同じFocusの指定も拒否する。抽選専用・共鳴専用の低レベル計算には操作用解放ガードを強制しない。
+- JACKPOT計測は従来どおり実PULLの元Stageが20以上の場合のみ。Stage 19討伐PULLは対象外。
+- 強化購入・RS支払い・RESPECは後続Phase 6で実装する。
+
+### Stage 50クリアと継続プレイ
+
+- Stage 50到達でNORMAL×1000を解放する。到達のみではクリアせず、Stage 50撃破時に通常どおり同StageのRS報酬を1回付与する。
+- NORMAL・共鳴・JACKPOT・SPECIALいずれの撃破でもPULL終了後にboss-defeated → game-cleared → stage-started（51）の順で通知する。
+- 達成状態はhighestStage >= 51から導出し、重複フラグを保存しない。一度達成済みならクリアイベントは再発行しない。
+- 一括結果は呼び出し内のクリア発生を示す固定サイズsummary.clearedGameを返す。分割呼び出しの集計は論理ORで結合し、現在の達成状態はhighestStageから別途取得する。
+- Stage 51以降も自由にプレイを継続し、NORMAL×1000は解放済みを維持する。新特殊ボス・新解放・追加報酬・転生・成長システムは導入しない。
+- クリアで一括NORMALのbase/CHAIN残数やSPECIAL×MAXの確定済み残数を破棄しない。次の実PULLは次Stageの補正を使用する。余剰ダメージは持ち越さない。
+- 100,000実PULL上限・RNG継続・キュー排他・資源持ち越しと一時状態リセットは第15/16章の契約を維持する。再読込後RNG復元はPhase 8、クリア画面の実表示はPhase 7。
+- HP/RS式を継続しても無制限桁数の成長は保証しない。既存の有限値・安全整数ガードを維持し、範囲超過はRangeErrorとする。

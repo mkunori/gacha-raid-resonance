@@ -81,6 +81,7 @@ describe('single-pull integration', () => {
   it('resolves multiple resonances before defeat even when normal damage already killed the boss', () => {
     const state = createInitialGameState()
     state.bossHp = 1
+    state.stage = state.highestStage = 6
     state.focus = 'WIND_THUNDER'
     state.stacks = { FIRE: 2, WIND: 6, THUNDER: 3 }
     const result = executeNormalPull(freezeDeep(state), normalRng())
@@ -90,10 +91,10 @@ describe('single-pull integration', () => {
       'normal-pull', 'normal-damage', 'resonance', 'resonance',
       'gauge-gained', 'additional-effect', 'boss-defeated', 'stage-started',
     ])
-    expect(result.events.every((event) => event.type === 'stage-started' || event.stage === 1)).toBe(true)
-    expect(result.state.stage).toBe(2)
-    expect(result.state.bossHp).toBe(calculateBossMaxHp(2))
-    expect(result.state.resonanceShards).toBe(18)
+    expect(result.events.every((event) => event.type === 'stage-started' || event.stage === 6)).toBe(true)
+    expect(result.state.stage).toBe(7)
+    expect(result.state.bossHp).toBe(calculateBossMaxHp(7))
+    expect(result.state.resonanceShards).toBe(calculateBossReward(6))
     expect(result.state.statistics.resonanceCounts).toEqual({ FLAME_STORM: 1, THUNDER_STORM: 1, OVERLOAD: 0 })
   })
   it.each([1, 10])('defeats exactly once at starting HP %s, resets transient state and carries persistent state', (hp) => {
@@ -127,7 +128,7 @@ describe('single-pull integration', () => {
   it('awards the defeated Stage, discards excess damage and does not end at Stage 50', () => {
     const state = createInitialGameState()
     state.stage = state.highestStage = 50
-    state.bossHp = 10
+    state.bossHp = 1
     const result = executeNormalPull(state, normalRng())
     expect(result.state.stage).toBe(51)
     expect(result.state.bossHp).toBe(calculateBossMaxHp(51))
@@ -179,15 +180,15 @@ describe('single-pull integration', () => {
     expect(result.state.statistics.totalNormalPulls).toBe(1)
     expect(result.state.statistics.totalSpecialPulls).toBe(0)
   })
-  it.each([5, 10, 15, 20, 25, 35, 40, 45, 50])('leaves special boss Stage %s modifiers for Phase 5', (stage) => {
+  it.each([[5, 7.5, 300, 13], [10, 5, 240, 13], [15, 8.5, 240, 13], [20, 17, 168, 13], [25, 10, 240, 25], [35, 6.375, 300, 13], [40, 8.5, 168, 13], [45, 8.5, 240, 25], [50, 8, 240, 13]])('applies special boss Stage %s modifiers', (stage, normal, resonance, gauge) => {
     const state = createInitialGameState()
     state.stage = state.highestStage = stage
     state.bossHp = calculateBossMaxHp(stage)
     state.stacks = { FIRE: 2, WIND: 0, THUNDER: 3 }
     const result = executeNormalPull(state, normalRng())
-    expect(normalDamage(result)).toBe(10)
-    expect(result.events.find((event) => event.type === 'resonance')!.damage).toBe(240)
-    expect(result.state.specialGauge).toBe(13)
+    expect(normalDamage(result)).toBeCloseTo(normal)
+    expect(result.events.find((event) => event.type === 'resonance')!.damage).toBeCloseTo(resonance)
+    expect(result.state.specialGauge).toBe(gauge)
   })
   it('replays a fixed seed across 300 single pulls with identical states and events', () => {
     const replay = () => {

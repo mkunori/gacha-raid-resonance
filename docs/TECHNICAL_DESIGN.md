@@ -11,13 +11,15 @@ docs/                   仕様、設計、段階的な計画
 src/
   components/           表示と操作のコンポーネント
   data/rules.ts         v0.6確率・倍率・コスト・解放設定（初期定義）
+  data/bosses.ts        10特殊ボスの名前・補正因子
   game/                 通常抽選・H1/H2・戦闘・追加効果・一括PULL実装済み
     gacha.ts            独立抽選とH1スタック加算
     resonance.ts        3共鳴・予約効果・H2/BOOST消費・反復判定
     combat.ts           基礎A・通常/共鳴ダメージ
     special.ts          独立SPECIAL抽選・火力・MAX予約数
     jackpot.ts          Stage20以降の区間集計・ボーナス計算
-    boss.ts             通常ボス・PULL終了後のStage進行
+    boss.ts             特性取得・PULL終了後のStage進行/クリアイベント
+    progression.ts      highestStageによる解放/クリア判定・Focus切替
     validation.ts       数値・スタック・一時効果・区間/キュー整合性の検証
     upgrades.ts         購入・RESPEC（未実装）
     engine.ts           初期状態・実PULL統合・CHAINキュー・一括/再開・集計
@@ -31,7 +33,7 @@ src/
 
 不要な空モジュール・ゲームエンジン・状態管理ライブラリは追加しない。
 共鳴ペアとフォーカス優先・固定順はsrc/data/rules.tsに集約済み。
-特殊ボス表など未定義の設定は各機能の実装PRでsrc/dataに追加し、GAME_SPECとの照合テストを行う。
+特殊ボス表はsrc/data/bosses.tsに集約し、GAME_SPEC第5章の独立した期待値と照合する。
 
 ## Reactの責務と状態の境界
 
@@ -113,7 +115,7 @@ BOOST/THUNDER/FLAME/属性スタックを討伐で初期化し、CATALYST/GAUGE/
 | boss.applyBossDamage | 現HP、非負ダメージ → 丸めない残HP（PULL内は負値を許容） |
 | boss.finishBossDefeat | 検証済みGameState → CombatResult。生存中は同一state参照・空イベント、HP<=0なら1回だけ報酬/次Stage |
 | resonance.findNextResonance | スタック、Focus → 次の共鳴またはnull |
-| resonance.resolveResonances | スタック、一時状態、Focus、A、共鳴Lv、CATALYST（既定0） → 新スタック/一時状態/残触媒、ゲージ増分、発動順の共鳴/ダメージ/消費情報 |
+| resonance.resolveResonances | スタック、一時状態、Focus、A、共鳴Lv、CATALYST（既定0）、元Stage（既定1） → 新スタック/一時状態/残触媒、ゲージ増分、発動順の共鳴/ダメージ/消費情報 |
 | engine.createInitialGameState | 引数なし → 独立した初期GameState（Stage 1、強化Lv0、基本値はrulesを参照） |
 | engine.executeNormalPull | GameState、RNG → CombatResult（新stateと順序付きCombatEvent[]） |
 
@@ -130,15 +132,15 @@ executeNormalPullは既に分離した作業状態をfinishBossDefeatへ渡す�
 
 FLAMEは今回共鳴×1.5と次の10通常PULL×1.15。通常攻撃で旧残回数を減らした後、共鳴で残回数10へ更新する。
 THUNDERは既存予約を現在共鳴で使って消費してから、THUNDERであれば新しい予約を1つ残す。
-同一PULL内の次共鳴にも効く。OVERLOADは1発ごとに+12。
+同一PULL内の次共鳴にも効く。OVERLOADは1発ごとに通常+12、Stage 25/45のみ+24。
 反復上限はスタック総上限/(3+3)から導出し、ゼロダメージでもスタック消費により必ず終了する。
 Phase 3ではBOOSTとCATALYSTの取得・消費・ダメージ乗算も適用する（下記）。
 討伐時は属性とBOOST/THUNDER/FLAMEをリセットし、ゲージ・CATALYST・フォーカス・強化・支払台帳・キュー・JACKPOT区間は保持する。
 更新する統計は通常PULL、SSR、種類別共鳴、討伐数と最高Stageのみ。他機能の統計は保持する。
 Phase 4ではSPECIAL回数とJACKPOT発動回数も対応する実行時に更新する。
 
-Phase 2では全Stageが通常ボス倍率1.0。特殊ボスはPhase 5でチャネル別の倍率選択を接続する。
-Stage 50撃破後は共通のStage+1を行い、終了状態を仮実装しない。最終仕様確定時の変更はboss.tsに局所化する。
+Phase 2時点では全Stageが通常ボス倍率1.0だった。Phase 5では元Stageの特殊ボス補正を各チャネルへ接続済み。
+Stage 50撃破後は共通のStage+1を維持し、一度だけクリアイベントを加える（下記）。
 ゲージはゲーム上の上限なし。資源/カウンター/Stage/Lvは安全整数、ダメージ・HPは有限で絶対値MAX_SAFE_INTEGER以下を要求する。
 HPとダメージの小数は保持し、途中整数丸めをしない。数値演算が検証範囲を越えた場合はRangeErrorで結果全体を返さず停止する。
 これはバランス上限ではなくJavaScript numberの数値安全境界であり、無限成長に対応する場合は数値表現を別途設計する。
@@ -152,7 +154,7 @@ HPとダメージの小数は保持し、途中整数丸めをしない。数値
   は新規操作。NORMAL/SPECIAL両キューが空であることを要求し、基本PULLを予約して共通再開処理へ渡す。
 - `resumePendingNormalPulls(state, rng, limit?: number): NormalPullBatchResult`
   は既存キューのみを反復処理する。limitは整数1〜100,000、既定値はCORE_RULES.operationPullLimit。
-  Stageによる回数の解放制御は未実装。再開に新しい基本PULLを追加しない。
+  新規操作はStage解放を検証するが、再開は回数の解放でブロックしない。新しい基本PULLを追加しない。
 
 `normalPullQueue: { base: number; chain: number }`は未実行数で、合計は`pendingNormalPulls`と常に一致する。
 CHAIN群が空になるまで次のbaseを処理せず、新たなCHAINは群の末尾に3件追加する。
@@ -169,7 +171,7 @@ CHARGEは別途source: chargeのgauge-gainedも返す。SPECIALは自動実行�
 
 一括返却は最終stateと固定サイズsummaryのみ。summaryはこの呼び出し中の実PULL・CHAIN追加・残数・SSR、
 種類別共鳴/追加効果、JACKPOT発動数、進行Stage数、獲得RSを持つ。各実PULLのイベントは集計後に捨てる。
-分割したsummaryは残数を除き加算可能で、最終残数は最後のsummaryを使う。
+分割したsummaryの数値カウンターは残数を除き加算可能で、最終残数は最後のsummaryを使う。clearedGameは論理ORで結合する。
 100,000上限は全効果・討伐遷移が完了したPULL境界で判定する。入力は変更せず、空キューの再開だけは同一state参照を返す。
 呼び出し側は入出力を不変スナップショットとして扱う（finishBossDefeatと同じ契約）。
 途中の例外では部分stateを返さず入力を維持するが、消費済みRNGは巻き戻せない。
@@ -198,11 +200,11 @@ SPECIALも低レベル実PULLとユーザー操作全体を分離する。UIはe
 ゲージ不足の新規操作はRNG0回・状態非破壊でRangeError。空キューの再開は入力参照を返す。
 入力検証後にSPECIAL抽選を1回行い、特殊チャネルダメージを適用し、最後に共通finishBossDefeatを呼ぶ。
 全ネスト状態をコピーする処理はNORMAL/SPECIALで共用する。例外時は入力を変更せず、RNGは巻き戻さない。
-特殊ボス用の倍率受け口だけを設け、Stage別補正は未実装。SPECIALで通常効果の寿命や共鳴・JACKPOTは進めない。
+Phase 5では元StageのSPECIAL倍率を接続済み。SPECIALで通常効果の寿命や共鳴・JACKPOTは進めない。
 
-SPECIALのイベント順はspecial-pull → gauge-spent → special-damage → 必要ならboss-defeated/stage-started。
+SPECIALのイベント順はspecial-pull → gauge-spent → special-damage → 必要ならboss-defeated / 初回Stage50撃破時game-cleared / stage-started。
 SpecialPullBatchResult.summaryは呼び出し内のactualPulls、pendingPulls、gaugeSpent、stagesAdvanced、earnedShards、
-結果種別resultCountsのみ。イベント全文を保持せず、残数以外はチャンク間で加算できる。
+結果種別resultCountsとclearedGameを持つ。イベント全文を保持せず、数値カウンターは残数以外を加算、clearedGameはORで結合する。
 
 JACKPOT区間は元StageがUNLOCK_STAGES.jackpot（20）以上の実NORMALだけで進める。
 Stage19討伐PULLは除外し、Stage20最初のPULLから開始する。Stage20前の非ゼロ区間はRangeError。
@@ -212,7 +214,33 @@ SPECIAL・討伐・操作終了では区間をリセットしない。CHAINと�
 jackpot-windowイベントは区間完了時だけ発行し、元Stage、SSR数、triggered、damage、gaugeGainを持つ。
 当選ならsource: jackpotのgauge-gainedも発行し、statistics.jackpotCountとNORMAL summary.jackpotCountを更新する。
 JACKPOTは独立チャネルで通常/共鳴/SPECIAL倍率を適用しない。追加のRNGや自動PULLは発生させない。
-JACKPOTのStage20開始だけ先行実装し、その他の解放はPhase5。SPECIAL予約とRNGの永続化はPhase8。
+Phase 4でJACKPOTのStage20開始を先行実装し、その他の解放はPhase 5で接続済み。SPECIAL予約とRNGの永続化はPhase 8。
+
+### Phase 5の公開API・補正と進行（Issue #11）
+
+| API | 入力 → 出力 / 契約 |
+| --- | --- |
+| boss.getBossInfo | 正整数Stage → 読み取り専用BossInfo。名前、特性説明、属性別NORMAL倍率、種類別共鳴倍率、SPECIAL倍率、OVERLOAD獲得量。呼び出しごとにデータを分離 |
+| progression.isFeatureUnlocked | highestStage、Feature → 解放可否。NORMAL_1/10/100/1000、SPECIAL_1/MAX、FOCUS、JACKPOT |
+| progression.isUpgradeUnlocked | highestStage、Upgrade → 購入機能の解放可否。支払い・購入は行わない |
+| progression.setFocus | GameState、Focus → 新しいルート状態。未解放はBALANCEDのみ、保留キュー中は全変更を拒否 |
+| progression.hasClearedGame | highestStage → Stage50撃破済み（>=51）かどうか |
+
+getBossInfoはsrc/data/bosses.tsの因子を乗算してチャネル別補正を取得する。Stage 35/40の複合を維持し、非特殊Stageと51以降は倍率1/OVERLOAD+12。
+engineは元StageのNORMAL/SPECIAL倍率を既存calculate*Damageへ渡す。resolveResonancesの末尾に任意stage（既定1）を追加し、種類別倍率とOVERLOAD獲得量を選択する。
+既存のFLAME/THUNDER/CATALYST/BOOSTとボス倍率は乗算。OVERLOADイベントも元Stageの実増分12/24を返す。JACKPOTはボス補正を参照しない。
+
+新規executeNormalPulls/executeSpecialPullsはhighestStageで解放を検証し、未解放ならRNG0回・入力非破壊のRangeError。
+回数ガードは新規操作境界に限定し、resume APIは予約済み分を続行する。低レベルexecuteNormalPull/executeSpecialPullは1実PULL用。
+Focusが未解放で非BALANCEDの不正stateは両戦闘入力で拒否する。setFocusは両キューが空の場合のみ許可する。
+setFocusの未変更ネスト値は入力と共有するため、入出力は不変スナップショットとして扱う。直接変更が必要ならコピーする。
+解放閾値はUNLOCK_STAGES/UPGRADE_RULES、クリアStageはrules.tsのGAME_CLEAR_STAGEを参照する。
+
+finishBossDefeatは初回Stage50撃破でboss-defeated → game-cleared → stage-started(51)を返す。highestStage>=51から達成状態を導出し、重複フラグを追加しない。
+NORMAL/SPECIALの固定サイズsummary.clearedGameはこの呼び出しでの通知発生を示す。複数チャンクはORで集計する。
+達成済みの状態をUIで復元する際はhasClearedGameを使う。Stage51以降も同じHP/RS式と数値安全ガードを維持する。
+討伐リセット契約・FIFO・RNG消費・操作排他・100,000上限・予約保持は変えない。残りPULLは次Stageの補正で処理する。
+クリア画面、強化購入、保存は後続フェーズ。
 
 ## 乱数とテスト
 
@@ -232,7 +260,7 @@ saveVersion: 1を持つJSONをlocalStorageに保存。キー案はgacha-raid-res
 JSON.parseの結果はunknownとして受け取り、型アサーションだけで信用しない。
 Stage整数、有限HP、スタック0〜12、CATALYST/BOOST0〜3、非負整数RS・Lv・カウンター、
 JACKPOT区間0〜99、既知の属性/フォーカス、設定、未消化キューの整合性を検証する。
-実装時にStage 50以降、GAUGE上限、数値の安全整数境界を仕様確認して反映する。
+Stage 50以降は第17章の継続プレイ規則を反映する。GAUGEのゲーム上の上限は設けず、既存の安全数値境界とキュー/解放/クリア状態の整合性を保存検証へ反映する。
 将来versionは上書きせずエラーを表示し、既知の旧versionのみ明示的に移行する。
 破損時は読み込み失敗を通知し、初期化できる操作を提供する。破損データを無言で上書きしない。
 
