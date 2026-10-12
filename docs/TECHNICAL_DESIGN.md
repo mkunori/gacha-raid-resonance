@@ -436,6 +436,7 @@ AppのEffectはconnect/cleanupだけを行い、StrictModeでも起動時ロー�
 タブ間の自動マージ・完全排他は行わない。比較→書込はlocalStorageの原子的CASではなく、複数タブの真に同時な書込の競合を完全には排除できない。競合後は再読込し最新データを確認する。
 SaveStatusは復元/保存待ち/保存中/保存済み/失敗/保存停止を表示。ResultEffectsはControllerの設定を受け取り、旧スキップ状態を保存しない。
 Export/Import・削除/復旧UIは8-C。Importは検証後のstate/RNG/settingsの一括置換と、元データ保護を別途実装する。
+8-CではImport前の厳密検証と利用者確認、削除/初期化確認、破損データ・別タブ競合からの明示的復旧を実装する。Import直後に旧checkpointの遅延保存が新状態を上書きしないよう、保存タイマー/購読と保存先の比較基準を含めて切り替える。復元した過去のハイライト・クリア演出は再発行しない。
 
 ## CIとGitHub Pages
 

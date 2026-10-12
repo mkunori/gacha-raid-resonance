@@ -134,9 +134,12 @@ describe('debounce, checkpoints and lifecycle', () => {
     expect(persistence.getSnapshot()).toMatchObject({ kind: 'error', message: expect.stringMatching(/保存失敗/) })
     expect(controller.getCheckpoint()).toBe(checkpoint)
     expect(deserializeSaveData(storage.getItem()!)).toEqual(save())
+    await controller.start({ kind: 'normal', count: 1 })
+    const latest = controller.getCheckpoint()
+    expect(latest).not.toBe(checkpoint)
     persistence.flush()
     expect(persistence.getSnapshot().kind).toBe('saved')
-    expect(deserializeSaveData(storage.getItem()!)).toEqual(checkpoint)
+    expect(deserializeSaveData(storage.getItem()!)).toEqual(latest)
   })
 
   it.each([SAVE_STORAGE_KEY, null])('stops timers and preserves external data on storage event %s', key => {
