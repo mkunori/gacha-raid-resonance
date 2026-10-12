@@ -169,7 +169,8 @@ describe('boundary notifications preserve battle contracts', () => {
     act(() => { running = controller.start({ kind: 'normal', count: 1000 }) })
     const before = controller.getSnapshot()
     fireEvent.click(screen.getByLabelText('演出軽減'))
-    expect(controller.getSnapshot()).toBe(before)
+    expect(controller.getSnapshot()).toEqual({ ...before, settings: { reducedEffects: true } })
+    expect(controller.getSnapshot().state).toBe(before.state)
     expect(rng).not.toHaveBeenCalled()
     view.unmount(); release(); await running
     expect(rng).not.toHaveBeenCalled()
@@ -210,7 +211,8 @@ describe('boundary notifications preserve battle contracts', () => {
     const before = controller.getSnapshot()
     fireEvent.click(screen.getByRole('button', { name: '演出をスキップ' }))
     fireEvent.click(screen.getByLabelText('演出軽減'))
-    expect(controller.getSnapshot()).toBe(before)
+    expect(controller.getSnapshot()).toEqual({ ...before, settings: { reducedEffects: true } })
+    expect(controller.getSnapshot().state).toBe(before.state)
     expect(rng).toHaveBeenCalledTimes(3)
   })
   it('SPECIAL can issue the first clear without adding any NORMAL statistics', async () => {

@@ -1,13 +1,14 @@
 import { createInitialGameState, executeNormalPulls, executeSpecialPulls, resumePendingNormalPulls, resumePendingSpecialPulls } from '../game/engine'
 import { setFocus } from '../game/progression'
 import { purchaseUpgrade, respecUpgrades } from '../game/upgrades'
-import type { Focus, GameState, NormalPullBatchResult, NormalPullCount, RandomSource, SpecialPullBatchResult, SpecialPullCount, Upgrade } from '../types/game'
+import type { DisplaySettings, Focus, GameState, NormalPullBatchResult, NormalPullCount, RandomSource, SaveDataV1, SpecialPullBatchResult, SpecialPullCount, Upgrade } from '../types/game'
+import type { createCheckpointRandom } from '../storage/random'
 
 export type Operation = { kind: 'normal'; count: NormalPullCount } | { kind: 'special'; count: SpecialPullCount }
 export type ResultSummary = { kind: 'normal'; value: NormalPullBatchResult['summary'] } | { kind: 'special'; value: SpecialPullBatchResult['summary'] }
 /** Per start/resume call, including CHAIN; not a game-balance limit. */
 export const UI_AUTO_PULL_LIMIT = 10_000
-export interface BattleSnapshot { state: GameState; busy: boolean; paused: boolean; error: string | null; notice: { kind: 'success' | 'error'; text: string } | null; result: ResultSummary | null; highlight: { id: number; result: ResultSummary } | null; startStage: number }
+export interface BattleSnapshot { state: GameState; settings: DisplaySettings; busy: boolean; paused: boolean; error: string | null; notice: { kind: 'success' | 'error'; text: string } | null; result: ResultSummary | null; highlight: { id: number; result: ResultSummary } | null; startStage: number }
 
 /** Fixed-size aggregates: latest pending replaces; clear is OR; counters add. */
 export function mergeSummary(previous: ResultSummary | null, next: ResultSummary): ResultSummary {
@@ -41,13 +42,22 @@ function yieldToBrowser(signal: AbortSignal): Promise<void> {
 
 /** Event-driven store. Snapshots are immutable; one RNG stream continues after errors.
  * No pulls in render, effects or React updater callbacks. */
-export function createBattleController(options: { initialState?: GameState; rng?: RandomSource; chunkSize?: number; yieldFrame?: (signal: AbortSignal) => Promise<void> } = {}) {
-  const rng = options.rng ?? Math.random
+export function createBattleController(options: { initialState?: GameState; settings?: DisplaySettings; checkpointRandom?: ReturnType<typeof createCheckpointRandom>; rng?: RandomSource; chunkSize?: number; yieldFrame?: (signal: AbortSignal) => Promise<void> } = {}) {
+  if (options.rng && options.checkpointRandom) throw new RangeError('Specify only one RNG source')
+  const rng = options.checkpointRandom?.random ?? options.rng ?? Math.random
   const limit = options.chunkSize ?? 100
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new RangeError('UI chunk size must be 1–500')
   const wait = options.yieldFrame ?? yieldToBrowser
   const state = options.initialState ?? createInitialGameState()
-  let snapshot: BattleSnapshot = { state, busy: false, paused: false, error: null, notice: null, result: null, highlight: null, startStage: state.stage }
+  let snapshot: BattleSnapshot = { state, settings: { ...(options.settings ?? { reducedEffects: false }) }, busy: false, paused: false, error: null, notice: null, result: null, highlight: null, startStage: state.stage }
+  // Immutable pair captured before publication, never sampled by the save timer.
+  let checkpoint: SaveDataV1 | null = options.checkpointRandom ? {
+    saveVersion: 1, state, settings: snapshot.settings, rng: options.checkpointRandom.getCheckpoint(),
+  } : null
+  function commit(next: GameState, combat: boolean): void {
+    if (checkpoint) checkpoint = { ...checkpoint, state: next,
+      rng: combat ? options.checkpointRandom!.getCheckpoint() : checkpoint.rng }
+  }
   let highlightId = 0
   const listeners = new Set<() => void>()
   let active: AbortController | null = null
@@ -61,6 +71,7 @@ export function createBattleController(options: { initialState?: GameState; rng?
       if (pending()) throw new Error('保留PULLをすべて再開してから変更してください')
       if (expectedState !== snapshot.state) throw new Error('表示が更新されました。最新の内容を確認して操作してください')
       const next = transform(snapshot.state)
+      commit(next, false)
       publish({ ...snapshot, state: next, notice: { kind: 'success', text: message } })
       return true
     } catch (error) {
@@ -95,6 +106,7 @@ export function createBattleController(options: { initialState?: GameState; rng?
           summary = { kind: 'special', value: result.summary }
         }
         boundaryResult = mergeSummary(boundaryResult, summary)
+        commit(nextState, true)
         publish({ ...snapshot, state: nextState, result: mergeSummary(snapshot.result, summary) })
         processed += summary.value.actualPulls
         first = false
@@ -117,6 +129,16 @@ export function createBattleController(options: { initialState?: GameState; rng?
   }
   return {
     getSnapshot: () => snapshot,
+    /** Immutable snapshot contract, just like getSnapshot. Null for legacy injected RNGs.
+     * Failure preserves the last successful state/RNG pair; live RNG is not rewound. */
+    getCheckpoint: () => checkpoint,
+    setReducedEffects: (reducedEffects: boolean) => {
+      if (typeof reducedEffects !== 'boolean') throw new RangeError('Invalid reducedEffects')
+      if (snapshot.settings.reducedEffects === reducedEffects) return
+      const settings = { reducedEffects }
+      if (checkpoint) checkpoint = { ...checkpoint, settings }
+      publish({ ...snapshot, settings })
+    },
     subscribe: (listener: () => void) => {
       listeners.add(listener)
       return () => {

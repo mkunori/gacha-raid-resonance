@@ -53,7 +53,7 @@ Web Workerは実測で必要になった場合のみ検討する。
 ### Phase 7-Aの実行制御（Issue #15）
 
 `src/ui/battleController.ts`はReact非依存の操作ストア。Appは`useSyncExternalStore`で確定スナップショットを購読する。
-`createBattleController`は初期状態・RNG・チャンクサイズ・描画待ち関数を注入可能。通常はcreateInitialGameStateとMath.randomを使用する。
+`createBattleController`は初期状態・RNG・チャンクサイズ・描画待ち関数を注入可能。8-Bの通常起動はcreateBrowserSessionが復元データまたは初期状態と可保存RNGを渡す。旧来の独立テスト用rng注入も維持する。
 作成・購読・render・Effect・React更新関数では抽選しない。ボタンのイベントでstart/resumeを呼び、同期的にbusyを立てて二重受付を拒否する。
 NORMAL/SPECIALの新規操作は保留中も拒否する。7-Bの強化・RESPEC・Focus操作も同じbusy/保留ガードを共有する。
 
@@ -73,7 +73,7 @@ statusライブ領域は開始/完了/保留の状態変化を通知し、進捗
 
 最後の購読解除（画面破棄）でAbortControllerを中止し、待機タイマーを解除する。古い継続処理は中止トークンを検査し、新しい操作に状態を書き戻さない。
 StrictModeの購読解除/再購読だけでは操作を開始しない。予約が残る場合は明示再開が必要。
-スナップショットは直接変更しない。保存・RNG永続化はPhase 8まで未実装で、再読込時には初期化されることを画面に明示する。
+スナップショットは直接変更しない。Phase 7-A時点の再読込初期化は、8-Bで検証済みチェックポイントの復元へ置き換えた。
 
 表示専用formatNumberは大数を科学表記、小数を最大2桁へ整形し、非有限値は「—」とする。HPバー割合は0〜100にクランプし数値・ARIAテキストを併記する。
 Vitestの既存node環境を維持し、React UIテストだけjsdom・Testing Library・user-eventを使う。固定RNGとストア注入で実際のコア/API接続・StrictMode・競合・再開・キーボードを検証する。
@@ -114,9 +114,9 @@ highlightFactsは集計からSSR・共鳴種別・CHAIN件数/追加数・JACKPO
 ResultEffectsは最新1件のみを保持するライブ領域と、idをkeyとする短いCSSアニメーション（600ms、非モーダル）を表示する。
 履歴配列・タイマー・演出待機・演出用RNGはなく、連続操作で古いバナーを蓄積しない。クリア済み状態は従来どおりhighestStageから継続表示する。
 
-DisplaySettings.reducedEffectsとスキップ対象idはReact内の一時的な表示状態。軽減/スキップ時は動きだけを除き、重要な集計テキストは残す。
+Phase 7-C時点ではDisplaySettings.reducedEffectsとスキップ対象idはReact内の一時的な表示状態とした。8-Bでは設定のみControllerへ移し永続化した。軽減/スキップ時は動きだけを除き、重要な集計テキストは残す。
 OSのprefers-reduced-motionはCSSで尊重し、表示設定の変更はbusy中も可能。スキップは現在のバナーのみ対象とし、予約PULLや戦闘処理を中断しない。
-設定は再読込で初期化し、Phase 8でSaveDataV1.settingsへの保存を検討する。
+設定はSaveDataV1.settingsから復元する。スキップ対象idは引き続きコンポーネント内の一時状態。
 StatisticsPanelはstate.statisticsとhighestStageを直接参照し、NORMAL/SPECIAL/SSR/3共鳴/討伐/JACKPOT/最高Stageを静的に表示する。
 直前結果と見出しを分け、存在しない生涯CHAIN数などは追加しない。RESPECやFocus変更でも統計は保持される。
 総合UX・高負荷は下記7-Dで検証済み（実機タッチ・数時間の実測は未検証）。保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
@@ -244,7 +244,7 @@ HPとダメージの小数は保持し、途中整数丸めをしない。数値
 CHAIN群が空になるまで次のbaseを処理せず、新たなCHAINは群の末尾に3件追加する。
 個々のPULLは同種・未抽選なので、FIFOを個数で表現でき、CHAINの深さに比例した配列や再帰は不要。
 ボス遷移でも両カウンターを保持する。すべて安全な非負整数で、合計不一致・上限超過はRangeError。
-既存保存機能は未実装のため、旧キュー形式からの移行コードはまだ設けない。
+保存v1以前の実在データはないため、架空の旧キュー形式からの移行コードは設けない。
 
 H2取得はH1の後、共鳴判定前。SSRで最大3まで+1し、各共鳴で最大1個を消費して×1.5。
 BOOSTは共鳴時に全消費して(1+0.25×個数)を乗算し、THUNDER/FLAME/触媒倍率も乗算する。
@@ -359,7 +359,7 @@ Phase 7-Bで手動購入とRESPEC確認UIを接続済み。保存入口の厳密
 
 ## 乱数とテスト
 
-RandomSourceは[0,1)を返す注入関数。通常利用は境界でMath.randomを渡す。
+RandomSourceは[0,1)を返す注入関数。通常利用は起動時に生成/復元したmulberry32-v1を渡す。Math.randomは既存の独立Controller用既定値としてのみ残す。
 src/test/random.tsに固定列（枯渇時は例外）とMulberry32の固定シードRNGを実装済み。
 固定シードは0x12345678（テスト名にも記載）。seed 1の既知出力でもアルゴリズムを固定する。
 これらはテスト専用で本番の抽選APIには含めない。
@@ -402,34 +402,41 @@ SSR<=NORMAL数、触媒<=SSR、JACKPOTに必要な100PULL/SSR3件と現在窓の
 将来価格を変更する際は旧価格履歴の扱いと保存版/移行を別途設計する。既存v1台帳を新価格で無断再計算しない。
 クライアントだけの検証は完全な改ざん耐性や購入履歴の真正性を保証しない。
 
-### Phase 8-B / 8-Cへの必須契約（未実装）
+### Phase 8-Bの確定境界契約（実装済み）
 
-8-Bでブラウザseed生成とControllerへの可保存RNG接続を行う。現時点のMath.randomは差し替えていない。
+main.tsxはReact起動前にcreateBrowserSessionを1回呼び、保存を検証してからControllerを作る。保存なし/読込失敗時の新規seedはcrypto.getRandomValuesで生成し、通常実行にcreateCheckpointRandomを接続する。render/Effect/更新関数ではseed生成・抽選しない。
 **最後に成功したチャンクのGameStateとRNG状態を同じ確定境界で対として取得・保存する。**
 現行Controllerは失敗チャンクをコミットしないが消費済みRNGは巻き戻さない。
-したがって8-Bでは最後の成功境界のRNGチェックポイントを別途保持し、未コミット失敗チャンク後のlive RNGと以前のGameStateを組み合わせて保存しない。
+Controller.getCheckpointは最後の成功境界のRNGチェックポイントを別途保持し、未コミット失敗チャンク後のlive RNGと以前のGameStateを組み合わせない。
+checkpointRandomを渡したControllerは初期と各成功チャンクでSaveDataV1を原子的に作り、snapshotをpublishする前に更新する。getCheckpointも不変スナップショット契約で、呼出し側は直接編集しない。
+購入/RESPEC/Focusは新stateと以前の確定RNG、setReducedEffectsは以前のstate/RNGと新settingsの対を作る。設定変更はbusy中も可能で、抽選やGameState更新を行わない。
+既存rngのみを注入したControllerはgetCheckpoint=null（保存しない独立テスト/Fixture）。両RNGの同時指定は拒否する。
 liveでの例外後再開と、最後の成功チェックポイントを再読込した再開は一致保証の対象外。無失敗の中断・復元は同じ乱数列・結果を維持する。
 NORMAL/CHAIN残数・SPECIALの確定済み残回数をそのまま復元し、新規操作の回数として再計算しない。再開は手動操作とする。
 settings.reducedEffectsのみ永続化し、スキップ対象id・busy・summary・highlight・通知は保存しない。
 復元直後に過去ハイライトやStage50初回演出を発行しない。達成表示はhighestStageから導出し、再開後の新規確定分だけ通知する。
 
-## ブラウザのセーブ・ロード（Phase 8-B / 8-C、未実装）
+## ブラウザのセーブ・ロード（Phase 8-B / Issue #24、実装済み）
 
-saveVersion: 1を持つJSONをlocalStorageに保存。キー案はgacha-raid-resonance:save。
+saveVersion: 1を持つJSONをlocalStorageに保存。キー定数はlocalSave.tsのSAVE_STORAGE_KEY = gacha-raid-resonance:save。
 ブラウザAPIはstorageに閉じ込め、シリアライズ・検証・移行は純粋関数にする。
 JSON.parseの結果はunknownとして受け取り、型アサーションだけで信用しない。
 Stage整数、有限HP、スタック0〜12、CATALYST/BOOST0〜3、非負整数RS・Lv・カウンター、
 JACKPOT区間0〜99、既知の属性/フォーカス、設定、未消化キューの整合性を検証する。
 Stage 50以降は第17章の継続プレイ規則を反映する。GAUGEのゲーム上の上限は設けず、既存の安全数値境界とキュー/解放/クリア状態の整合性を保存検証へ反映する。
 将来versionは上書きせずエラーを表示し、既知の旧versionのみ明示的に移行する。
-破損時は読み込み失敗を通知し、初期化できる操作を提供する。破損データを無言で上書きしない。
+openLocalSaveはStorage I/Oを注入可能。保存なしと読込拒否/破損/未来版を区別し、後者は新規ゲームを起動しても保存停止とする。削除・初期化の復旧UIは8-Cまで提供しない。
 
-状態更新後にデバウンス保存し、pagehide/visibilitychangeで確定状態をflushする。
-離脱イベントだけに依存せず、巨大操作も安全なチャンク境界でチェックポイント保存する。
-ストレージ容量超過や利用拒否は捕捉し、保存失敗をUIに表示する。
-Exportは確定した版付きJSON、Importはパース・完全検証後に確認して置換する。
-削除とRESPECも確認を必要とし、RESPECは支払済みRSを返却して台帳をゼロにする。
-初期GameState生成と純粋codec/RNGは実装済み。ブラウザ保存・復元・Export/Import・削除UIは未実装。
+createAutosaveはControllerのcheckpoint参照が変わった時だけ500msデバウンスを開始し、連続更新中も最初の未保存から2秒を上限としてflushする。
+予約/設定を含む固定サイズの最新1件だけを保持し、保存時にlive RNGを取得しない。毎PULL/毎チャンクで書き込まない。
+pagehide/visibilitychange(hidden)と購読解除時もbest effortでflush。アンマウントではタイマーと全イベント・Controller購読を解除し、最後のController購読がなくなると既存の処理中止契約が働く。
+AppのEffectはconnect/cleanupだけを行い、StrictModeでも起動時ロードをやり直したりPULLを開始したりしない。保存状態は別ストアで安定したsnapshotを返す。同じstatus/messageでは通知しない。
+書込前にcodec検証し、setItemが成功してから保存済みとする。容量/権限/serialize失敗時はstate/RNGを変更せず、次の確定変更/離脱で再試行する。
+別タブのstorageイベント（同じStorage/キーまたはclear）を検出すると保存を停止する。書込直前にも現在のraw JSONと読込時/直前成功書込値を比較し、イベント到着前の上書きを防ぐ。
+タブ間の自動マージ・完全排他は行わない。比較→書込はlocalStorageの原子的CASではなく、複数タブの真に同時な書込の競合を完全には排除できない。競合後は再読込し最新データを確認する。
+SaveStatusは復元/保存待ち/保存中/保存済み/失敗/保存停止を表示。ResultEffectsはControllerの設定を受け取り、旧スキップ状態を保存しない。
+Export/Import・削除/復旧UIは8-C。Importは検証後のstate/RNG/settingsの一括置換と、元データ保護を別途実装する。
+8-CではImport前の厳密検証と利用者確認、削除/初期化確認、破損データ・別タブ競合からの明示的復旧を実装する。Import直後に旧checkpointの遅延保存が新状態を上書きしないよう、保存タイマー/購読と保存先の比較基準を含めて切り替える。復元した過去のハイライト・クリア演出は再発行しない。
 
 ## CIとGitHub Pages
 
