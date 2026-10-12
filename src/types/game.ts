@@ -35,6 +35,8 @@ export interface GameState {
   jackpot: { pullsInWindow: number; ssrInWindow: number }
   /** Includes unprocessed requested pulls and CHAIN additions. */
   pendingNormalPulls: number
+  /** CHAIN group is drained before the next requested base pull. Sum equals pendingNormalPulls. */
+  normalPullQueue: { base: number; chain: number }
   statistics: {
     totalNormalPulls: number
     totalSpecialPulls: number
@@ -58,13 +60,31 @@ export interface SaveDataV1 {
 export type CombatEvent =
   | { type: 'normal-pull'; stage: number; result: NormalPullResult }
   | { type: 'normal-damage'; stage: number; damage: number }
-  | { type: 'resonance'; stage: number; resonance: Resonance; damage: number }
-  | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' }
-  | { type: 'additional-effect'; stage: number; effect: AdditionalEffect; applied: false }
+  | { type: 'resonance'; stage: number; resonance: Resonance; damage: number; catalystConsumed?: true; boostConsumed?: number }
+  | { type: 'catalyst-gained'; stage: number; amount: number }
+  | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' | 'charge' }
+  | { type: 'additional-effect'; stage: number; effect: AdditionalEffect; applied: boolean; amount?: number }
   | { type: 'boss-defeated'; stage: number; reward: number }
   | { type: 'stage-started'; stage: number; maxHp: number }
 
 export interface CombatResult {
   state: GameState
   events: CombatEvent[]
+}
+
+export type NormalPullCount = 1 | 10 | 100 | 1000
+
+/** Bounded-size aggregate: no per-pull event history is retained. Counts cover this invocation only. */
+export interface NormalPullBatchResult {
+  state: GameState
+  summary: {
+    actualPulls: number
+    chainAdded: number
+    pendingPulls: number
+    stagesAdvanced: number
+    earnedShards: number
+    ssrCount: number
+    resonanceCounts: Record<Resonance, number>
+    effectCounts: Record<AdditionalEffect, number>
+  }
 }

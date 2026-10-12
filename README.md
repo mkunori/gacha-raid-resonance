@@ -8,8 +8,8 @@
 現在の画面はタイトルと開発中案内のみです。
 UI非依存の通常ガチャ独立抽選・H1、基本ダメージ、3共鳴、単一PULL戦闘エンジン、
 ボスHP・撃破RS・次Stage進行を実装済みです。FLAME/THUNDERの予約効果とOVERLOADのゲージ獲得に対応します。
-戦闘画面への接続、H2、追加効果の発動は未実装です。
-一括NORMAL PULL、手動SPECIAL PULL、CHAIN/BOOST/JACKPOT、Stage 1〜50の完成、
+H2触媒、CHAIN/CHARGE/BOOST、×1/10/100/1000の一括NORMAL PULLと中断・再開も実装済みです。
+戦闘画面への接続、手動SPECIAL PULL、JACKPOT、Stage 1〜50の完成、
 特殊ボス、強化・RESPEC、localStorage保存・JSON Export/Import・統計を今後追加します。
 PC・スマートフォン対応の静的Webアプリです。サーバー・認証は使用しません。
 
@@ -45,7 +45,8 @@ npm run preview
 CIとクリーンインストールではpackage-lock.jsonに基づくnpm ciを使用します。
 Vitestは確率データ、全抽選境界、独立抽選・乱数消費順と回数、
 固定列/固定シード再現、H1加算・上限・入力非破壊・不正値拒否に加え、
-ダメージ式、共鳴順・バフ寿命、ゲージ、討伐遷移、数値オーバーフローを検証します。
+ダメージ式、共鳴順・バフ寿命、触媒/BOOSTの乗算、ゲージ、討伐遷移、
+CHAIN再連鎖、一括/単発一致、100,000実PULL上限、中断・再開、数値オーバーフローを検証します。
 
 ## GitHub Pages
 
@@ -66,4 +67,4 @@ mainへのpushで検証後にdistをデプロイし、mainでの手動実行に�
 仕様の正本はdocs/GAME_SPEC.mdです。Issue #1は仕様作成履歴として参照し、実装は個別Issueで追跡します。
 仕様・実装・テストの整合性を各PRで保ちます。
 数値や計算式は独断で変更せず、仮定や確認事項を明示します。
-次はH2・CHAIN・追加効果と一括処理を、小さなPRに分けて実装します。
+次はPhase 4の手動SPECIAL PULL・JACKPOTを別Issue・別PRで実装します。
