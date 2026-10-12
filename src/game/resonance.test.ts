@@ -75,13 +75,13 @@ describe('reservation and immediate effects', () => {
     expect(result.gaugeGain).toBe(24)
     expect(result.temporary.thunderStormReserved).toBe(false)
   })
-  it('refreshes FLAME to 10 and leaves future BOOST inert', () => {
+  it('refreshes FLAME to 10 and consumes BOOST without mutating input', () => {
     const inputStacks = Object.freeze({ FIRE: 3, WIND: 3, THUNDER: 0 })
     const inputTemporary = Object.freeze({ ...temporary(), flameStormPullsRemaining: 5, boostCount: 3 })
     const result = resolveResonances(inputStacks, inputTemporary, 'BALANCED', 10, 0)
-    expect(result.activations[0].damage).toBe(360)
+    expect(result.activations[0].damage).toBe(630)
     expect(result.temporary.flameStormPullsRemaining).toBe(10)
-    expect(result.temporary.boostCount).toBe(3)
+    expect(result.temporary.boostCount).toBe(0)
     expect(inputTemporary.flameStormPullsRemaining).toBe(5)
     expect(inputStacks.FIRE).toBe(3)
   })

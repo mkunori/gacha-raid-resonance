@@ -103,6 +103,7 @@ describe('single-pull integration', () => {
     state.resonanceShards = 7
     state.catalyst = 2
     state.pendingNormalPulls = 4
+    state.normalPullQueue = { base: 0, chain: 4 }
     state.jackpot = { pullsInWindow: 99, ssrInWindow: 3 }
     state.temporary.boostCount = 3
     state.temporary.thunderStormReserved = true
@@ -114,7 +115,7 @@ describe('single-pull integration', () => {
     expect(result.state.resonanceShards).toBe(25)
     expect(result.state.specialGauge).toBe(30)
     expect(result.state.catalyst).toBe(2)
-    expect(result.state.pendingNormalPulls).toBe(4)
+    expect(result.state.pendingNormalPulls).toBe(3)
     expect(result.state.jackpot).toEqual(state.jackpot)
     expect(result.state.stacks).toEqual({ FIRE: 0, WIND: 0, THUNDER: 0 })
     expect(result.state.temporary).toEqual(createInitialGameState().temporary)
@@ -151,28 +152,28 @@ describe('single-pull integration', () => {
     expect(second.events.find((event) => event.type === 'resonance')!.damage).toBeCloseTo(504)
     expect(second.state.temporary.thunderStormReserved).toBe(false)
   })
-  it('caps H1 before resonance and leaves existing CATALYST unconsumed', () => {
+  it('caps H1 before resonance, gains a catalyst then consumes one', () => {
     const state = createInitialGameState()
     state.stacks = { FIRE: 11, WIND: 3, THUNDER: 0 }
     state.catalyst = 2
     const result = executeNormalPull(state, sequenceRng([0.995, 0, 0]))
     expect(result.state.stacks).toEqual({ FIRE: 9, WIND: 0, THUNDER: 0 })
-    expect(result.events.find((event) => event.type === 'resonance')!.damage).toBe(360)
+    expect(result.events.find((event) => event.type === 'resonance')!.damage).toBe(540)
     expect(result.state.catalyst).toBe(2)
   })
   it.each([
     ['NONE', 0], ['CHAIN', 0.93], ['CHARGE', 0.95], ['BOOST', 0.98],
-  ] as const)('reports %s without executing it, H2, SPECIAL or JACKPOT', (effect, roll) => {
+  ] as const)('applies %s and H2 without executing SPECIAL or JACKPOT', (effect, roll) => {
     const state = createInitialGameState()
     state.specialGauge = 60
     state.catalyst = 2
     state.temporary.boostCount = 3
     const result = executeNormalPull(state, sequenceRng([0.995, 0, roll]))
-    expect(result.events).toContainEqual({ type: 'additional-effect', stage: 1, effect, applied: false })
-    expect(result.state.specialGauge).toBe(61)
-    expect(result.state.catalyst).toBe(2)
+    expect(result.events).toContainEqual(expect.objectContaining({ type: 'additional-effect', stage: 1, effect, applied: effect !== 'NONE' }))
+    expect(result.state.specialGauge).toBe(effect === 'CHARGE' ? 66 : 61)
+    expect(result.state.catalyst).toBe(3)
     expect(result.state.temporary.boostCount).toBe(3)
-    expect(result.state.pendingNormalPulls).toBe(0)
+    expect(result.state.pendingNormalPulls).toBe(effect === 'CHAIN' ? 3 : 0)
     expect(result.state.jackpot).toEqual(state.jackpot)
     expect(result.state.statistics.ssrCount).toBe(1)
     expect(result.state.statistics.totalNormalPulls).toBe(1)
