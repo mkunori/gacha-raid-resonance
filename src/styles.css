@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; }
 main { width: min(100% - 2rem, 1120px); margin: 2rem auto; }
-h1 { font-size: clamp(1.8rem, 6vw, 3.2rem); line-height: 1.15; margin: .5rem 0 1rem; letter-spacing: .03em; }
+h1 { font-size: clamp(1.8rem, 6vw, 3.2rem); line-height: 1.15; margin: .5rem 0 1rem; letter-spacing: .03em; overflow-wrap: anywhere; }
 h1 span { color: #76e3d0; margin-left: .3em; }
 h2 { font-size: 1.2rem; margin: 0 0 1rem; }
 h2 span { font-weight: 400; color: #bdcbe1; }
@@ -31,6 +31,10 @@ button:focus-visible { outline: 3px solid #f4d9a0; outline-offset: 3px; }
 .error { color: #ffb09f; padding: .8rem; border: 1px solid #c77e72; border-radius: .5rem; }
 .clear-badge { color: #95e9c7; font-weight: 700; }
 footer { text-align: center; padding: 1rem; }
+.return-to-pull { display: inline-flex; align-items: center; min-height: 44px; padding: .5rem 1rem; color: #76e3d0; }
+.return-to-pull:focus-visible { outline: 3px solid #f4d9a0; outline-offset: 3px; }
+.effects-toggle { display: inline-flex; align-items: center; gap: .5rem; min-height: 44px; cursor: pointer; }
+.effects-toggle input { width: 20px; height: 20px; }
 .upgrade-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .upgrade-card { min-width: 0; padding: 1rem; border: 1px solid #44536b; border-radius: .75rem; background: #0d1424; }
 .upgrade-card h3 { font-size: 1rem; margin-top: 0; }
