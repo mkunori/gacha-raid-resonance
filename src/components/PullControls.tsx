@@ -1,6 +1,6 @@
 import { CORE_RULES, UNLOCK_STAGES } from '../data/rules'
 import { isFeatureUnlocked } from '../game/progression'
-import type { BattleController, BattleSnapshot } from '../ui/battleController'
+import { UI_AUTO_PULL_LIMIT, type BattleController, type BattleSnapshot } from '../ui/battleController'
 import { formatNumber as n } from '../ui/format'
 
 export function PullControls({ controller, snapshot }: { controller: BattleController; snapshot: BattleSnapshot }) {
@@ -21,9 +21,9 @@ export function PullControls({ controller, snapshot }: { controller: BattleContr
       const enough = state.specialGauge >= CORE_RULES.specialGaugeCost
       return <button key={count} aria-label={`SPECIAL ×${count}`} aria-describedby={`special-${count}-hint`} disabled={unavailable || !unlocked || !enough} onClick={() => void controller.start({ kind: 'special', count })}>SPECIAL ×{count}<small id={`special-${count}-hint`}>{!unlocked ? `Stage ${UNLOCK_STAGES.specialMax}で解放` : !enough ? 'ゲージ不足' : '実行可能'}</small></button>
     })}</div>
-    <p role="status">{busy ? '処理中です。ほかの操作は完了までお待ちください。' : pending ? '未実行PULLがあります。再開してください。' : '次のPULLを選んでください。'}</p>
+    <p role="status">{busy ? '処理中です。ほかの操作は完了までお待ちください。' : snapshot.paused ? `${n(UI_AUTO_PULL_LIMIT)}実PULLの安全上限で一時停止しました。残りは再開できます。` : pending ? '未実行PULLがあります。再開してください。' : '次のPULLを選んでください。'}</p>
     {(busy || pending > 0) && <p>実行済み {n(snapshot.result?.value.actualPulls ?? 0)} · 未実行 {n(pending)} PULL</p>}
     {error && <p role="alert" className="error">{error}</p>}
-    {!busy && pending > 0 && <><button onClick={() => void controller.resume()}>保留PULLを再開</button><p className="muted">保持した状態と乱数ストリームの続きから再開します。原因が解消しない場合は再度停止します。</p></>}
+    {!busy && pending > 0 && <><button onClick={() => void controller.resume()}>保留PULLを再開</button><p className="muted">保持した状態と乱数ストリームの続きから再開します。再開も最大{n(UI_AUTO_PULL_LIMIT)}実PULLで一時停止します。{error && 'エラーの原因が解消しない場合は再度停止します。'}</p></>}
   </section>
 }

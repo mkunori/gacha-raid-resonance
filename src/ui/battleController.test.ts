@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { calculateBossMaxHp } from '../game/boss'
-import { createInitialGameState, executeNormalPulls, executeSpecialPulls } from '../game/engine'
+import { createInitialGameState, executeNormalPulls, executeSpecialPulls, resumePendingNormalPulls } from '../game/engine'
 import { seededRng } from '../test/random'
-import { createBattleController, mergeSummary } from './battleController'
+import { createBattleController, mergeSummary, UI_AUTO_PULL_LIMIT } from './battleController'
 import { formatNumber } from './format'
 
 const frame = async () => {}
@@ -11,6 +11,68 @@ function initial(stage = 50) {
 }
 
 describe('UI chunk execution', () => {
+  it('pauses long CHAIN at 10,000, preserves FIFO and RNG, and caps each manual resume', async () => {
+    const stream = () => {
+      let index = 0
+      return () => { const position = index++; return position < 30_000 && position % 3 === 2 ? 0.93 : 0 }
+    }
+    const state = initial(1)
+    const expectedRng = stream()
+    const first = executeNormalPulls(state, 1, expectedRng, UI_AUTO_PULL_LIMIT)
+    const rng = vi.fn(stream())
+    // A non-divisor verifies the final chunk is shortened to exactly the budget.
+    const controller = createBattleController({ initialState: state, rng, chunkSize: 333, yieldFrame: frame })
+    expect(await controller.start({ kind: 'normal', count: 1 })).toBe(true)
+    expect(controller.getSnapshot()).toMatchObject({ busy: false, paused: true, error: null, state: first.state })
+    expect(controller.getSnapshot().result).toEqual({ kind: 'normal', value: first.summary })
+    expect(first.state.pendingNormalPulls).toBe(20_001)
+    expect(rng).toHaveBeenCalledTimes(30_000)
+    const pausedSnapshot = controller.getSnapshot()
+    expect(controller.getSnapshot()).toBe(pausedSnapshot)
+    expect(await controller.start({ kind: 'special', count: 1 })).toBe(false)
+    expect(controller.getSnapshot()).toBe(pausedSnapshot)
+    let expectedState = first.state
+    let expectedSummary = { kind: 'normal' as const, value: first.summary }
+    for (const total of [20_000, 30_000, 30_001]) {
+      const next = resumePendingNormalPulls(expectedState, expectedRng, UI_AUTO_PULL_LIMIT)
+      expectedState = next.state
+      expectedSummary = mergeSummary(expectedSummary, { kind: 'normal', value: next.summary }) as typeof expectedSummary
+      expect(await controller.resume()).toBe(true)
+      expect(controller.getSnapshot().state).toEqual(expectedState)
+      expect(controller.getSnapshot().result).toEqual(expectedSummary)
+      expect(controller.getSnapshot()).toMatchObject({ busy: false, paused: total < 30_001, error: null })
+      expect(rng).toHaveBeenCalledTimes(total * 3)
+    }
+    expect(controller.getSnapshot().state.pendingNormalPulls).toBe(0)
+    expect(controller.getSnapshot().state).toEqual(executeNormalPulls(state, 1, stream()).state)
+  })
+  it('caps huge SPECIAL MAX and preserves the fixed reservation through repeated resume', async () => {
+    const state = initial()
+    state.specialGauge = 20_001 * 30
+    const expected = executeSpecialPulls(state, 'MAX', () => 0)
+    const rng = vi.fn(() => 0)
+    const controller = createBattleController({ initialState: state, rng, yieldFrame: frame })
+    await controller.start({ kind: 'special', count: 'MAX' })
+    expect(controller.getSnapshot()).toMatchObject({ busy: false, paused: true, error: null })
+    expect(controller.getSnapshot().state.pendingSpecialPulls).toBe(10_001)
+    expect(rng).toHaveBeenCalledTimes(10_000)
+    await controller.resume()
+    expect(controller.getSnapshot().paused).toBe(true)
+    expect(controller.getSnapshot().state.pendingSpecialPulls).toBe(1)
+    await controller.resume()
+    expect(controller.getSnapshot().paused).toBe(false)
+    expect(controller.getSnapshot().state).toEqual(expected.state)
+    expect(controller.getSnapshot().result).toEqual({ kind: 'special', value: expected.summary })
+    expect(rng).toHaveBeenCalledTimes(20_001)
+  })
+  it('completes at the exact safety boundary when no reservation remains', async () => {
+    const state = initial()
+    state.specialGauge = UI_AUTO_PULL_LIMIT * 30
+    const controller = createBattleController({ initialState: state, rng: () => 0, yieldFrame: frame })
+    await controller.start({ kind: 'special', count: 'MAX' })
+    expect(controller.getSnapshot()).toMatchObject({ busy: false, paused: false, error: null })
+    expect(controller.getSnapshot().state.pendingSpecialPulls).toBe(0)
+  })
   it.each([1, 10, 100, 1000] as const)('NORMAL ×%s matches a single core invocation including CHAIN', async (count) => {
     const state = initial()
     const before = structuredClone(state)

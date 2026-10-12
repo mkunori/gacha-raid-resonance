@@ -96,6 +96,22 @@ describe('battle UI and unlocks', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     expect(button('NORMAL ×1').disabled).toBe(false)
   })
+  it('shows a normal safety pause and remaining CHAIN, then offers manual resume', async () => {
+    let index = 0
+    const controller = createBattleController({ yieldFrame: instant, rng: () => { const position = index++; return position < 30_000 && position % 3 === 2 ? 0.93 : 0 } })
+    render(<StrictMode><App controller={controller} /></StrictMode>)
+    fireEvent.click(button('NORMAL ×1'))
+    await waitFor(() => expect(controller.getSnapshot().busy).toBe(false))
+    expect(screen.getByRole('status').textContent).toContain('10,000実PULLの安全上限で一時停止')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(/未実行 20,001 PULL/)).toBeTruthy()
+    expect(button('NORMAL ×1').disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '保留PULLを再開' }))
+    await waitFor(() => expect(controller.getSnapshot().busy).toBe(false))
+    expect(controller.getSnapshot().result?.value.actualPulls).toBe(20_000)
+    expect(screen.getByRole('status').textContent).toContain('一時停止')
+    expect(screen.getByText(/未実行 10,001 PULL/)).toBeTruthy()
+  })
   it('unmount cancels queued work and does not consume RNG during StrictMode mounting', async () => {
     let release!: () => void
     const rng = vi.fn(() => 0)

@@ -3,7 +3,9 @@ import type { GameState, NormalPullBatchResult, NormalPullCount, RandomSource, S
 
 export type Operation = { kind: 'normal'; count: NormalPullCount } | { kind: 'special'; count: SpecialPullCount }
 export type ResultSummary = { kind: 'normal'; value: NormalPullBatchResult['summary'] } | { kind: 'special'; value: SpecialPullBatchResult['summary'] }
-export interface BattleSnapshot { state: GameState; busy: boolean; error: string | null; result: ResultSummary | null; startStage: number }
+/** Per start/resume call, including CHAIN; not a game-balance limit. */
+export const UI_AUTO_PULL_LIMIT = 10_000
+export interface BattleSnapshot { state: GameState; busy: boolean; paused: boolean; error: string | null; result: ResultSummary | null; startStage: number }
 
 /** Fixed-size aggregates: latest pending replaces; clear is OR; counters add. */
 export function mergeSummary(previous: ResultSummary | null, next: ResultSummary): ResultSummary {
@@ -43,7 +45,7 @@ export function createBattleController(options: { initialState?: GameState; rng?
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new RangeError('UI chunk size must be 1–500')
   const wait = options.yieldFrame ?? yieldToBrowser
   const state = options.initialState ?? createInitialGameState()
-  let snapshot: BattleSnapshot = { state, busy: false, error: null, result: null, startStage: state.stage }
+  let snapshot: BattleSnapshot = { state, busy: false, paused: false, error: null, result: null, startStage: state.stage }
   const listeners = new Set<() => void>()
   let active: AbortController | null = null
   const publish = (next: BattleSnapshot) => { snapshot = next; listeners.forEach((listener) => listener()) }
@@ -52,26 +54,33 @@ export function createBattleController(options: { initialState?: GameState; rng?
     if (snapshot.busy || (operation && pending()) || (!operation && !pending())) return false
     const token = new AbortController()
     active = token
-    publish({ ...snapshot, busy: true, error: null, result: operation ? null : snapshot.result, startStage: operation ? snapshot.state.stage : snapshot.startStage })
+    publish({ ...snapshot, busy: true, paused: false, error: null, result: operation ? null : snapshot.result, startStage: operation ? snapshot.state.stage : snapshot.startStage })
     try {
       await wait(token.signal)
       let first = true
+      let processed = 0
       do {
         if (token.signal.aborted) return false
         const current = snapshot.state
+        const chunkLimit = Math.min(limit, UI_AUTO_PULL_LIMIT - processed)
         let nextState: GameState
         let summary: ResultSummary
         if ((first && operation?.kind === 'normal') || (!operation && current.pendingNormalPulls) || (!first && current.pendingNormalPulls)) {
-          const result = first && operation?.kind === 'normal' ? executeNormalPulls(current, operation.count, rng, limit) : resumePendingNormalPulls(current, rng, limit)
+          const result = first && operation?.kind === 'normal' ? executeNormalPulls(current, operation.count, rng, chunkLimit) : resumePendingNormalPulls(current, rng, chunkLimit)
           nextState = result.state
           summary = { kind: 'normal', value: result.summary }
         } else {
-          const result = first && operation?.kind === 'special' ? executeSpecialPulls(current, operation.count, rng, limit) : resumePendingSpecialPulls(current, rng, limit)
+          const result = first && operation?.kind === 'special' ? executeSpecialPulls(current, operation.count, rng, chunkLimit) : resumePendingSpecialPulls(current, rng, chunkLimit)
           nextState = result.state
           summary = { kind: 'special', value: result.summary }
         }
         publish({ ...snapshot, state: nextState, result: mergeSummary(snapshot.result, summary) })
+        processed += summary.value.actualPulls
         first = false
+        if (pending() && processed >= UI_AUTO_PULL_LIMIT) {
+          publish({ ...snapshot, paused: true })
+          return true
+        }
         if (pending()) await wait(token.signal)
       } while (pending())
       return true
