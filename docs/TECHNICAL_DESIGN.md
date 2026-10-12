@@ -119,7 +119,7 @@ OSのprefers-reduced-motionはCSSで尊重し、表示設定の変更はbusy中�
 設定は再読込で初期化し、Phase 8でSaveDataV1.settingsへの保存を検討する。
 StatisticsPanelはstate.statisticsとhighestStageを直接参照し、NORMAL/SPECIAL/SSR/3共鳴/討伐/JACKPOT/最高Stageを静的に表示する。
 直前結果と見出しを分け、存在しない生涯CHAIN数などは追加しない。RESPECやFocus変更でも統計は保持される。
-実機タッチ・長時間高負荷・総合UXは7-D、保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
+総合UX・高負荷は下記7-Dで検証済み（実機タッチ・数時間の実測は未検証）。保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
 Phase 8ではreducedEffectsを永続化し、保存復元時に達成済みクリア演出を再発行せず、過去のPULLハイライトを新規結果として再通知しない契約を維持する。
 
 ### Phase 7-Dの検証と小規模UX調整（Issue #21）

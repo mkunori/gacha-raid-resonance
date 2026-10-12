@@ -54,6 +54,16 @@ try {
     await page.keyboard.press('Tab');
     if (await page.locator(':focus').innerText() !== 'キャンセル') throw new Error('Focus wrap');
     await page.screenshot({ path: `node_modules/.browser-check/respec-${width}.png`, fullPage: true });
+    await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+    const enlarged = await page.evaluate(() => {
+      const dialog = document.querySelector('dialog');
+      const rect = dialog.getBoundingClientRect();
+      return { scroll: document.documentElement.scrollWidth, width: innerWidth, dialogScroll: dialog.scrollWidth, dialogClient: dialog.clientWidth, top: rect.top, bottom: rect.bottom, height: innerHeight,
+        clipped: [...document.querySelectorAll('button, dd')].filter(element => element.scrollWidth > element.clientWidth + 1).map(element => element.textContent) };
+    });
+    if (enlarged.scroll > enlarged.width || enlarged.dialogScroll > enlarged.dialogClient + 1 || enlarged.top < 0 || enlarged.bottom > enlarged.height || enlarged.clipped.length) throw new Error(`200% clipping: ${JSON.stringify(enlarged)}`);
+    await page.getByRole('button', { name: 'RESPECを確定', exact: true }).scrollIntoViewIfNeeded();
+    await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
     await page.keyboard.press('Escape');
     if (await page.locator(':focus').innerText() !== '無料RESPEC') throw new Error('Focus not restored');
     if (await page.evaluate(() => window.progressionTest.getSnapshot().state.resonanceShards) !== 916) throw new Error('Cancel mutated RS');
@@ -75,7 +85,7 @@ try {
     if (!(await toggle.isChecked())) throw new Error('Checkbox Space failed');
     if (await page.evaluate(() => JSON.stringify(window.progressionTest.getSnapshot())) !== beforeDisplay) throw new Error('Display mutated battle');
     await page.screenshot({ path: `node_modules/.browser-check/progression-${width}.png`, fullPage: true });
-    console.log(JSON.stringify({ width, ...dimensions, touch, dialog: dialogRect, purchase: 'pass', doubleClick: 'pass', fourFocus: 'pass', keyboard: 'pass', modal: 'pass', escape: 'pass', refund: 'pass', normalSpecialSequence: 'pass' }));
+    console.log(JSON.stringify({ width, ...dimensions, touch, dialog: dialogRect, text200: 'pass', purchase: 'pass', doubleClick: 'pass', fourFocus: 'pass', keyboard: 'pass', modal: 'pass', escape: 'pass', refund: 'pass', normalSpecialSequence: 'pass' }));
   }
   if (errors.length) throw new Error(errors.join('; '));
   console.log(JSON.stringify({ pageErrors: errors }));
