@@ -121,7 +121,7 @@ describe('JACKPOT integration and original Stage ordering', () => {
     const result = executeNormalPull(state, sequenceRng([0, 0, 0]))
     expect(result.events).toContainEqual({ type: 'jackpot-window', stage: 20, ssrCount: 2, triggered: false, damage: 0, gaugeGain: 0 })
     expect(result.state.statistics.jackpotCount).toBe(0)
-    expect(result.state.bossHp).toBe(state.bossHp - 10)
+    expect(result.state.bossHp).toBe(state.bossHp - 17)
     expect(result.state.specialGauge).toBe(1)
     expect(result.state.jackpot).toEqual({ pullsInWindow: 0, ssrInWindow: 0 })
   })
@@ -136,10 +136,10 @@ describe('JACKPOT integration and original Stage ordering', () => {
     const result = executeNormalPull(freezeDeep(state), sequenceRng([0.99, 0, effectRoll]))
     const resonances = result.events.filter((e) => e.type === 'resonance')
     expect(resonances.map((e) => e.resonance)).toEqual(['THUNDER_STORM', 'FLAME_STORM'])
-    expect(resonances[0].damage).toBeCloseTo(240 * 1.4 * 1.5 * 1.5)
+    expect(resonances[0].damage).toBeCloseTo(240 * 1.4 * 1.5 * 1.5 * 0.7)
     expect(resonances[0].catalystConsumed).toBe(true)
     expect(resonances[0].boostConsumed).toBe(2)
-    expect(resonances[1].damage).toBeCloseTo(240 * 1.4 * 1.5)
+    expect(resonances[1].damage).toBeCloseTo(240 * 1.4 * 1.5 * 0.7)
     expect(resonances[1].catalystConsumed).toBeUndefined()
     expect(result.state.stage).toBe(21)
     expect(result.state.catalyst).toBe(0)
@@ -190,7 +190,7 @@ describe('JACKPOT integration and original Stage ordering', () => {
   it('checks multiple hundred-pull windows in one batch and exposes no unbounded event history', () => {
     let draws = 0
     const rng = () => ++draws % 3 === 1 ? 0.99 : 0
-    const state = atStage(20)
+    const state = atStage(51)
     const result = executeNormalPulls(state, 1000, rng)
     expect(result.summary.actualPulls).toBe(1000)
     expect(result.summary.ssrCount).toBe(1000)
@@ -205,13 +205,13 @@ describe('JACKPOT integration and original Stage ordering', () => {
     const initial = atStage(19)
     initial.bossHp = 1
     const wholeRng = vi.fn(seededRng(42))
-    const whole = executeNormalPulls(initial, 1000, wholeRng)
+    const whole = executeNormalPulls(initial, 100, wholeRng)
     const singleRng = vi.fn(seededRng(42))
     let single = initial
-    for (let i = 0; i < 1000; i++) single = executeNormalPulls(single, 1, singleRng).state
+    for (let i = 0; i < 100; i++) single = executeNormalPulls(single, 1, singleRng).state
     expect(single).toEqual(whole.state)
     const chunkRng = vi.fn(seededRng(42))
-    let chunk = executeNormalPulls(freezeDeep(initial), 1000, chunkRng, limit)
+    let chunk = executeNormalPulls(freezeDeep(initial), 100, chunkRng, limit)
     const sum = { ...chunk.summary, effectCounts: { ...chunk.summary.effectCounts }, resonanceCounts: { ...chunk.summary.resonanceCounts } }
     while (chunk.state.pendingNormalPulls > 0) {
       const saved: GameState = JSON.parse(JSON.stringify(chunk.state))

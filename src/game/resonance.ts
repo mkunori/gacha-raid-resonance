@@ -1,6 +1,7 @@
 import { CORE_RULES, FOCUS_RESONANCE, RESONANCE_ORDER, RESONANCE_PAIRS } from '../data/rules'
 import type { Focus, GameState, Resonance } from '../types/game'
 import { calculateResonanceDamage } from './combat'
+import { getBossInfo } from './boss'
 import { finiteNumber, safeInteger, validateFocus, validateStacks, validateTemporary } from './validation'
 
 export interface ResonanceResolution {
@@ -29,6 +30,7 @@ export function resolveResonances(
   attack: number,
   resonancePowerLevel: number,
   catalyst = 0,
+  stage = 1,
 ): ResonanceResolution {
   validateStacks(stacks)
   validateTemporary(temporary)
@@ -36,6 +38,7 @@ export function resolveResonances(
   finiteNumber(attack, 'attack')
   safeInteger(resonancePowerLevel, 'RESONANCE POWER level')
   safeInteger(catalyst, 'catalyst', 0, CORE_RULES.catalystCap)
+  const boss = getBossInfo(stage)
   const result: ResonanceResolution = { stacks: { ...stacks }, temporary: { ...temporary }, catalyst, gaugeGain: 0, activations: [] }
   const limit = Math.floor(3 * CORE_RULES.stackCap / (2 * CORE_RULES.resonanceStackCost))
   for (let count = 0; ; count++) {
@@ -49,7 +52,7 @@ export function resolveResonances(
       (resonance === 'FLAME_STORM' ? CORE_RULES.flameResonanceMultiplier : 1) *
       (catalystConsumed ? CORE_RULES.catalystMultiplier : 1) *
       (1 + CORE_RULES.boostPerStack * boostConsumed)
-    result.activations.push({ resonance, damage: calculateResonanceDamage(attack, resonancePowerLevel, multiplier),
+    result.activations.push({ resonance, damage: calculateResonanceDamage(attack, resonancePowerLevel, multiplier, boss.resonanceMultipliers[resonance]),
       ...(catalystConsumed ? { catalystConsumed: true as const } : {}),
       ...(boostConsumed ? { boostConsumed } : {}),
     })
@@ -57,6 +60,6 @@ export function resolveResonances(
     result.temporary.boostCount = 0
     result.temporary.thunderStormReserved = resonance === 'THUNDER_STORM'
     if (resonance === 'FLAME_STORM') result.temporary.flameStormPullsRemaining = CORE_RULES.flameDurationPulls
-    if (resonance === 'OVERLOAD') result.gaugeGain += CORE_RULES.overloadGaugeGain
+    if (resonance === 'OVERLOAD') result.gaugeGain += boss.overloadGaugeGain
   }
 }

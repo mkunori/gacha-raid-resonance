@@ -1,6 +1,7 @@
 import { CORE_RULES } from '../data/rules'
 import type { CombatEvent, CombatResult, GameState, NormalPullBatchResult, NormalPullCount, RandomSource, SpecialPullBatchResult, SpecialPullCount } from '../types/game'
-import { applyBossDamage, calculateBossMaxHp, finishBossDefeat } from './boss'
+import { applyBossDamage, calculateBossMaxHp, finishBossDefeat, getBossInfo } from './boss'
+import { isFeatureUnlocked, type Feature } from './progression'
 import { calculateAttack, calculateNormalDamage } from './combat'
 import { applyNormalPullStacks, drawNormalPull } from './gacha'
 import { resolveResonances } from './resonance'
@@ -37,6 +38,7 @@ function validateCombatState(state: Readonly<GameState>): void {
   validateStacks(state.stacks)
   validateTemporary(state.temporary)
   validateFocus(state.focus)
+  if (!isFeatureUnlocked(state, 'FOCUS') && state.focus !== 'BALANCED') throw new RangeError('Focus is locked')
   safeInteger(state.specialGauge, 'specialGauge')
   safeInteger(state.resonanceShards, 'resonanceShards')
   safeInteger(state.catalyst, 'catalyst', 0, CORE_RULES.catalystCap)
@@ -70,18 +72,19 @@ function cloneCombatState(input: Readonly<GameState>): GameState {
  * Every effect in this pull targets the original boss, even after HP reaches zero.
  * Advances the CHAIN head, otherwise the base head, or one implicit base pull if empty.
  * This is a single actual-pull step, not a new batch action; generated CHAIN remains queued.
- * JACKPOT is resolved before finishBossDefeat; special bosses remain deferred.
+ * JACKPOT is resolved before finishBossDefeat and bypasses boss modifiers.
  */
 export function executeNormalPull(input: Readonly<GameState>, rng: RandomSource): CombatResult {
   validateCombatState(input)
   if (input.pendingSpecialPulls > 0) throw new RangeError('Resume pending SPECIAL before NORMAL')
   const attack = calculateAttack(input.upgradeLevels.PULL_POWER)
+  const boss = getBossInfo(input.stage)
   const pull = drawNormalPull(input.focus, rng)
   const state = cloneCombatState(input)
   if (state.normalPullQueue.chain > 0) state.normalPullQueue.chain--
   else if (state.normalPullQueue.base > 0) state.normalPullQueue.base--
   const events: CombatEvent[] = [{ type: 'normal-pull', stage: state.stage, result: pull }]
-  const normalDamage = calculateNormalDamage(attack, pull.rarity, state.temporary.flameStormPullsRemaining > 0)
+  const normalDamage = calculateNormalDamage(attack, pull.rarity, state.temporary.flameStormPullsRemaining > 0, boss.normalMultipliers[pull.element])
   state.bossHp = applyBossDamage(state.bossHp, normalDamage)
   state.temporary.flameStormPullsRemaining = Math.max(0, state.temporary.flameStormPullsRemaining - 1)
   events.push({ type: 'normal-damage', stage: state.stage, damage: normalDamage })
@@ -92,7 +95,7 @@ export function executeNormalPull(input: Readonly<GameState>, rng: RandomSource)
     events.push({ type: 'catalyst-gained', stage: state.stage, amount: state.catalyst - before })
   }
   const resolved = resolveResonances(
-    state.stacks, state.temporary, state.focus, attack, state.upgradeLevels.RESONANCE_POWER, state.catalyst,
+    state.stacks, state.temporary, state.focus, attack, state.upgradeLevels.RESONANCE_POWER, state.catalyst, state.stage,
   )
   state.stacks = resolved.stacks
   state.temporary = resolved.temporary
@@ -104,7 +107,7 @@ export function executeNormalPull(input: Readonly<GameState>, rng: RandomSource)
       state.statistics.resonanceCounts[activation.resonance] + 1, 'resonance count',
     )
     if (activation.resonance === 'OVERLOAD') {
-      events.push({ type: 'gauge-gained', stage: state.stage, amount: CORE_RULES.overloadGaugeGain, source: 'overload' })
+      events.push({ type: 'gauge-gained', stage: state.stage, amount: boss.overloadGaugeGain, source: 'overload' })
     }
   }
   state.specialGauge = safeInteger(state.specialGauge + resolved.gaugeGain + CORE_RULES.normalGaugeGain, 'specialGauge')
@@ -148,7 +151,7 @@ function validatePullLimit(limit: number): void {
   safeInteger(limit, 'actual pull limit', 1, CORE_RULES.operationPullLimit)
 }
 
-/** Start an action only when the previous action is fully drained. No Stage unlock checks yet. */
+/** Start an unlocked action only when the previous action is fully drained. */
 export function executeNormalPulls(
   input: Readonly<GameState>, count: NormalPullCount, rng: RandomSource,
   limit: number = CORE_RULES.operationPullLimit,
@@ -157,6 +160,7 @@ export function executeNormalPulls(
   validatePullLimit(limit)
   if (![1, 10, 100, 1000].includes(count)) throw new RangeError('Unsupported NORMAL PULL count')
   if (input.pendingNormalPulls !== 0 || input.pendingSpecialPulls !== 0) throw new RangeError('Resume pending pulls before starting a new action')
+  if (!isFeatureUnlocked(input, `NORMAL_${count}` as Feature)) throw new RangeError('NORMAL count is locked')
   return resumePendingNormalPulls({ ...input, pendingNormalPulls: count, normalPullQueue: { base: count, chain: 0 } }, rng, limit)
 }
 
@@ -173,7 +177,7 @@ export function resumePendingNormalPulls(
   let state: GameState = input
   const summary: NormalPullBatchResult['summary'] = {
     actualPulls: 0, chainAdded: 0, pendingPulls: input.pendingNormalPulls,
-    stagesAdvanced: 0, earnedShards: 0, ssrCount: 0, jackpotCount: 0,
+    stagesAdvanced: 0, clearedGame: false, earnedShards: 0, ssrCount: 0, jackpotCount: 0,
     resonanceCounts: { FLAME_STORM: 0, THUNDER_STORM: 0, OVERLOAD: 0 },
     effectCounts: { NONE: 0, CHAIN: 0, CHARGE: 0, BOOST: 0 },
   }
@@ -183,6 +187,7 @@ export function resumePendingNormalPulls(
     summary.actualPulls++
     for (const event of result.events) {
       if (event.type === 'normal-pull' && event.result.rarity === 'SSR') summary.ssrCount++
+      if (event.type === 'game-cleared') summary.clearedGame = true
       if (event.type === 'resonance') summary.resonanceCounts[event.resonance]++
       if (event.type === 'jackpot-window' && event.triggered) summary.jackpotCount++
       if (event.type === 'additional-effect') {
@@ -208,7 +213,7 @@ export function executeSpecialPull(input: Readonly<GameState>, rng: RandomSource
   if (input.specialGauge < CORE_RULES.specialGaugeCost) throw new RangeError('Insufficient SPECIAL gauge')
   const attack = calculateAttack(input.upgradeLevels.PULL_POWER)
   const pull = drawSpecialPull(rng)
-  const damage = calculateSpecialDamage(attack, pull, input.upgradeLevels.SPECIAL_POWER)
+  const damage = calculateSpecialDamage(attack, pull, input.upgradeLevels.SPECIAL_POWER, getBossInfo(input.stage).specialMultiplier)
   const state = cloneCombatState(input)
   state.specialGauge -= CORE_RULES.specialGaugeCost
   if (state.pendingSpecialPulls > 0) state.pendingSpecialPulls--
@@ -231,6 +236,7 @@ export function executeSpecialPulls(
   validatePullLimit(limit)
   if (count !== 1 && count !== 'MAX') throw new RangeError('Unsupported SPECIAL count')
   if (input.pendingNormalPulls > 0 || input.pendingSpecialPulls > 0) throw new RangeError('Resume pending pulls before starting a new action')
+  if (count === 'MAX' && !isFeatureUnlocked(input, 'SPECIAL_MAX')) throw new RangeError('SPECIAL MAX is locked')
   const reserved = count === 'MAX' ? calculateSpecialMaxCount(input.specialGauge) : 1
   if (input.specialGauge < CORE_RULES.specialGaugeCost) throw new RangeError('Insufficient SPECIAL gauge')
   return resumePendingSpecialPulls({ ...input, pendingSpecialPulls: reserved }, rng, limit)
@@ -246,7 +252,7 @@ export function resumePendingSpecialPulls(
   let state: GameState = input
   const summary: SpecialPullBatchResult['summary'] = {
     actualPulls: 0, pendingPulls: input.pendingSpecialPulls, gaugeSpent: 0,
-    stagesAdvanced: 0, earnedShards: 0, resultCounts: { STRIKE: 0, BURST: 0, MEGA_BURST: 0 },
+    stagesAdvanced: 0, clearedGame: false, earnedShards: 0, resultCounts: { STRIKE: 0, BURST: 0, MEGA_BURST: 0 },
   }
   while (state.pendingSpecialPulls > 0 && summary.actualPulls < limit) {
     const result = executeSpecialPull(state, rng)
@@ -255,6 +261,7 @@ export function resumePendingSpecialPulls(
     summary.gaugeSpent += CORE_RULES.specialGaugeCost
     for (const event of result.events) {
       if (event.type === 'special-pull') summary.resultCounts[event.result]++
+      if (event.type === 'game-cleared') summary.clearedGame = true
       if (event.type === 'boss-defeated') {
         summary.stagesAdvanced++
         summary.earnedShards = safeInteger(summary.earnedShards + event.reward, 'batch RS')

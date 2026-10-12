@@ -67,6 +67,7 @@ export type CombatEvent =
   | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' | 'charge' | 'jackpot' }
   | { type: 'additional-effect'; stage: number; effect: AdditionalEffect; applied: boolean; amount?: number }
   | { type: 'boss-defeated'; stage: number; reward: number }
+  | { type: 'game-cleared'; stage: number }
   | { type: 'stage-started'; stage: number; maxHp: number }
   | { type: 'special-pull'; stage: number; result: SpecialResult }
   | { type: 'gauge-spent'; stage: number; amount: number; source: 'special' }
@@ -88,6 +89,8 @@ export interface NormalPullBatchResult {
     chainAdded: number
     pendingPulls: number
     stagesAdvanced: number
+    /** True only when this invocation emitted game-cleared. Combine chunks with OR. */
+    clearedGame: boolean
     earnedShards: number
     ssrCount: number
     jackpotCount: number
@@ -105,6 +108,7 @@ export interface SpecialPullBatchResult {
     pendingPulls: number
     gaugeSpent: number
     stagesAdvanced: number
+    clearedGame: boolean
     earnedShards: number
     resultCounts: Record<SpecialResult, number>
   }
