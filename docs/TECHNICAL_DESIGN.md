@@ -41,7 +41,7 @@ src/
 Phase 7-AではAppがBattlePanel（HP・Stage・耐性・クリア）、ResourcePanel（属性・一時効果・RS・ゲージ）、
 PullControls（解放条件・操作・進捗・エラー・再開）、PullResultSummary（固定サイズ集計）を構成する。
 Phase 7-BではUpgradePanel（3強化・不可理由）、RespecDialog（無料全返還確認）、FocusPanel（4分布選択）も接続済み。
-詳細統計・演出・設定画面は7-C以降で追加する。
+Phase 7-CではResultEffects（集計ハイライト・表示設定）とStatisticsPanel（累積統計）を接続済み。
 Reactは表示・入力・確認ダイアログ・結果集計のみを担当し、抽選式を持たない。
 
 まずReact標準の状態管理で十分。アクション実行の境界でコアを呼び、
@@ -98,7 +98,27 @@ jsdomではdialogのopen状態のみ模擬し、実際のモーダル・背景�
 
 FocusPanelは既存FOCUS_PROBABILITIESから4種類の属性確率を表示し、state.focusをラジオの唯一の選択値とする。
 highestStageで解放判定しStage6前はBALANCED固定。busy/保留中はfieldsetごと無効化する。
-保存・詳細演出・統計画面・×MAX強化・自動購入は追加しない。
+7-Bの範囲には保存・演出・統計画面・×MAX強化・自動購入を含めない。演出と統計は下記7-Cで追加した。
+
+### Phase 7-Cの集計演出・統計（Issue #19）
+
+BattleSnapshot.highlightはUI専用の`{ id, result: ResultSummary } | null`。GameStateや保存データには追加しない。
+各start/resume呼び出し内で、成功したチャンクのsummaryだけを固定サイズで結合し、完了・10,000安全一時停止・エラー停止のfinallyで一度publishする。
+従来のresultは操作全体の累積を維持し、highlightはその呼び出しの増分のみ。再開前のSSR/共鳴/JACKPOTやclearedGameの累積ORを再通知しない。
+成功チャンク0の失敗では以前のhighlight参照/idを維持する。破棄時は既存abort契約に従い、古い非同期処理から通知しない。
+購入/RESPEC/Focus変更でもhighlightを更新しない。RNG・戦闘コア・チャンク処理・排他・安全上限の意味は変更しない。
+
+highlightFactsは集計からSSR・共鳴種別・CHAIN件数/追加数・JACKPOT・SPECIAL全種類・討伐・初回クリアの事実だけを生成する表示専用関数。
+各属性・SSR出現位置・発生順・発生Stageは表示しない。×1でもCHAINを含む確定集計として扱う。
+ResultEffectsは最新1件のみを保持するライブ領域と、idをkeyとする短いCSSアニメーション（600ms、非モーダル）を表示する。
+履歴配列・タイマー・演出待機・演出用RNGはなく、連続操作で古いバナーを蓄積しない。クリア済み状態は従来どおりhighestStageから継続表示する。
+
+DisplaySettings.reducedEffectsとスキップ対象idはReact内の一時的な表示状態。軽減/スキップ時は動きだけを除き、重要な集計テキストは残す。
+OSのprefers-reduced-motionはCSSで尊重し、表示設定の変更はbusy中も可能。スキップは現在のバナーのみ対象とし、予約PULLや戦闘処理を中断しない。
+設定は再読込で初期化し、Phase 8でSaveDataV1.settingsへの保存を検討する。
+StatisticsPanelはstate.statisticsとhighestStageを直接参照し、NORMAL/SPECIAL/SSR/3共鳴/討伐/JACKPOT/最高Stageを静的に表示する。
+直前結果と見出しを分け、存在しない生涯CHAIN数などは追加しない。RESPECやFocus変更でも統計は保持される。
+実機タッチ・長時間高負荷・総合UXは7-D、保存/設定永続化/復元後の演出方針はPhase 8へ引き継ぐ。
 
 ## GameState案
 

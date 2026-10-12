@@ -56,3 +56,12 @@ dialog::backdrop { background: rgb(0 0 0 / .75); }
 @media (max-width: 759px) { .upgrade-list, .focus-options { grid-template-columns: 1fr; } }
 @media (min-width: 760px) { .battle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; } }
 @media (max-width: 400px) { main { width: calc(100% - 1rem); margin: 1rem auto; } h1 span { display: block; margin-left: 0; } }
+/* One short, non-blocking emphasis per committed boundary; no timer queue. */
+@keyframes result-arrive { from { opacity: .65; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.result-highlight { animation: result-arrive 600ms ease-out; border-left: 4px solid #f5ca70; padding: .75rem; margin-top: .75rem; background: #25233b; }
+.result-highlight li { overflow-wrap: anywhere; margin: .35rem 0; }
+.jackpot-highlight { color: #ffe190; font-weight: 800; }
+.rare-highlight { color: #bdeaff; font-weight: 700; }
+.clear-highlight { border: 2px solid #8de7c1; }
+.reduced-effects { animation: none; }
+@media (prefers-reduced-motion: reduce) { .result-highlight { animation: none; } }

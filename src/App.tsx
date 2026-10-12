@@ -5,6 +5,8 @@ import { PullControls } from './components/PullControls'
 import { PullResultSummary } from './components/PullResultSummary'
 import { UpgradePanel } from './components/UpgradePanel'
 import { FocusPanel } from './components/FocusPanel'
+import { StatisticsPanel } from './components/StatisticsPanel'
+import { ResultEffects } from './components/ResultEffects'
 import { createBattleController, type BattleController } from './ui/battleController'
 
 export default function App({ controller: suppliedController }: { controller?: BattleController }) {
@@ -18,10 +20,12 @@ export default function App({ controller: suppliedController }: { controller?: B
       <BattlePanel state={snapshot.state} />
       <div className="battle-grid"><ResourcePanel state={snapshot.state} /><PullControls controller={controller} snapshot={snapshot} /></div>
       <PullResultSummary snapshot={snapshot} />
+      <ResultEffects highlight={snapshot.highlight} />
       <div role="status" aria-label="育成操作の通知" className={snapshot.notice?.kind === 'error' ? 'error' : 'operation-notice'}>{snapshot.notice?.text}</div>
       <UpgradePanel snapshot={snapshot} controller={controller} />
       <FocusPanel snapshot={snapshot} controller={controller} />
-      <footer>保存・詳細演出・統計画面は今後追加します。</footer>
+      <StatisticsPanel state={snapshot.state} />
+      <footer>保存機能は今後追加します。</footer>
     </main>
   )
 }
