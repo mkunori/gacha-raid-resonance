@@ -10,7 +10,7 @@ export function ResourcePanel({ state }: { state: GameState }) {
       <div><dt>RS</dt><dd>{n(state.resonanceShards)}</dd></div>
       <div><dt>SPECIAL GAUGE</dt><dd>{n(state.specialGauge)} <small>/ 1回 {CORE_RULES.specialGaugeCost}</small></dd></div>
       <div><dt>CATALYST</dt><dd>{state.catalyst} / 3</dd></div>
-      <div><dt>Focus（表示のみ）</dt><dd>{state.focus}</dd></div>
+      <div><dt>現在のFocus</dt><dd>{state.focus}</dd></div>
     </dl>
     <div className="stacks">{(['FIRE', 'WIND', 'THUNDER'] as const).map((element) => <div key={element} className={element.toLowerCase()}><strong>{element}</strong><span>{state.stacks[element]} / {CORE_RULES.stackCap}</span></div>)}</div>
     <p className="muted">BOOST {state.temporary.boostCount} / 3 · THUNDER予約 {state.temporary.thunderStormReserved ? 'あり' : 'なし'}<br />FLAME強化：残り {state.temporary.flameStormPullsRemaining} 通常PULL</p>

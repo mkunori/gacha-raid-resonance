@@ -30,3 +30,16 @@ node scripts/verify-battle-ui.mjs
 
 時間・フレーム数は環境依存の参考値であり性能保証ではない。実機スマートフォンのタッチ操作や総合UX・高負荷測定は7-Dで扱う。
 Pages本番の画面と動作はmainのデプロイ後に公開URLで確認する。
+
+## Phase 7-B 画面確認（Issue #17 / 2026-10-12）
+
+同じ準備・開発サーバーで`node scripts/verify-progression-ui.mjs`を実行する。
+初期Stage1のRS不足・未解放Focusを確認した後、別の検証用ReactルートへStage8・RS1000・固定RNGを注入して操作する。製品の初期状態やゲームルールは変更しない。
+
+- Edgeヘッドレスの320/375/1280px幅で購入・価格更新・全4Focus・RESPECの確認/取消/確定を確認。横スクロールなし。
+- PULL POWERのダブルクリックでも1Lvだけ購入し、他2強化の購入後は合計支払84 RS、確定RESPECでRS1000へ復帰。
+- native dialogの:modal状態、初期キャンセル選択、Tab/Shift+Tab循環、Esc取消と元ボタンへのフォーカス復帰を確認。確定後に元ボタンが無効なら強化見出しへフォーカスを戻す。
+- ラジオ選択・矢印キー、現在Focusと表示確率の一致、初期BALANCED固定を確認。画面上に保存なしの注意書きを維持。
+- pageerror 0件。既存verify-battle-ui.mjsも再実行し、3画面幅のNORMAL×1/×10、1000連＋CHAIN、SPECIAL×MAXが成功。
+- 既存1000連の参考測定は1,042実PULL・約196ms・描画27フレーム・ストア通知13回・summary JSON 301 bytes。育成UI追加後も集計は有限サイズ。
+- 実機タッチの総合評価・長時間負荷は7-D、保存はPhase 8。今回の画面はマージ後のmainデプロイまで本番に反映されない。
