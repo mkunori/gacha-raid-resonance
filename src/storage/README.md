@@ -1,7 +1,7 @@
 # 保存形式・JSON検証・RNGチェックポイント
 
 Phase 8-A / Issue #23のcodec/randomはブラウザ非依存。Phase 8-B / Issue #24のアダプターでブラウザ画面の自動保存・復元を接続済み。
-Export/Import・削除/復旧UIは8-C。破損時も自動削除・初期化しない。
+8-CとしてExport/Import・確認付き削除/復旧UIを接続済み。破損時も自動削除・初期化しない。
 
 ```ts
 import { createCheckpointRandom } from './random'
@@ -57,8 +57,23 @@ JSON上限は65,536 UTF-16コード単位（通常2 KiB未満、文字列本体�
 
 キーは`SAVE_STORAGE_KEY = 'gacha-raid-resonance:save'`。500msデバウンスと最大2秒で保存し、pagehide・visibilitychange(hidden)・接続解除時もflushする。
 setItem成功前に保存済みとしない。容量/権限/検証失敗は通知し、次の更新や離脱で再試行する。
-読込失敗・未来版・破損では新規ゲームをプレイできるが保存は停止し、元データを保護する。復旧UIは未実装。
+読込失敗・未来版・破損では新規ゲームをプレイできるが保存は停止し、元データを保護する。復旧はセーブ管理のバックアップ/確認付きImport・削除で行う。
 storageイベントと書込直前のraw比較で他タブの更新を検知し、保存を停止する。別Storage/キーのイベントは無視する。
 比較とsetItemは原子的CASではなく、真に同時な書込の完全排他や自動マージは保証しない。競合後は再読込が必要。
 StrictModeの再接続に対応し、解除時にタイマー・イベント・Controller購読をすべて解除する。
 ロード直後はbusy=false、highlight/result=null。保留予約があれば手動再開し、SPECIAL ×MAXを再計算しない。
+
+## セーブ管理（8-C）
+
+`createSaveManagement(controller, persistence, getStorage, reload)`はI/Oと再読込を注入できる。
+
+- `exportCurrent()`：serializeSaveDataを使い、保存先の値ではなく現在の最新確定checkpointを出力。busyは拒否し、未保存/blockedでも利用可能。
+- `backupRaw()`：保存先文字列を無変換で取得。未検証データとして別名・警告付きダウンロード。読取不能/保存なしは明示エラー。
+- `prepareImport(file)`：size上限128 KiBを読込前に確認→text→codec完全検証→独立した対象プレビューと確認トークン。文字数上限は既存65,536 UTF-16コード単位。
+- `prepareDelete()`：現在のcheckpoint/rawを固定した削除確認トークン。
+- `confirm(token)`：busy/最新checkpoint/所有トークンを確認→Autosave.suspend→raw再照合→setItemまたは対象キーだけremoveItem→retire→reload。書込/削除失敗時は元raw/stateを保持してresume。
+
+Autosaveの`suspend`はflushせずタイマーを止め、`resume`は失敗/取消後に通常保存へ戻すためのAPI。`retire`は永久に保存を無効化し、購読/イベントを解除する。retire後は旧flush・cleanup・再connectでも書き戻せない。通常のApp解除は従来どおりflushする。
+
+確認中の通常Autosaveによるraw変更も再確認対象。blockedを解除して通常保存に流用せず、現在rawへの明示確認付き置換を別経路で行う。完全同時書込みのCASは保証しない。
+成功後は通常起動を使ってstate/RNG/settingsを一括復元し、保留キューは手動再開。削除後は新しいseedで新規開始し、その後の自動保存で初期状態を保存する。取消/Escでは管理操作による変更なし。ゲーム状態を含むJSONは暗号化されていない。

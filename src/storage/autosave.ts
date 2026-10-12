@@ -24,9 +24,13 @@ export function createAutosave(controller: BattleController, adapter: LocalSave,
   }
   let debounce: ReturnType<typeof setTimeout> | undefined
   let maximum: ReturnType<typeof setTimeout> | undefined
+  let suspended = false
+  let retired = false
+  let disconnect: (() => void) | null = null
   const clear = () => { clearTimeout(debounce); clearTimeout(maximum); debounce = maximum = undefined }
   function flush(): void {
     clear()
+    if (suspended || retired) return
     const blocked = adapter.getBlockedReason()
     if (blocked) { publish({ kind: 'blocked', message: blocked }); return }
     if (!latest || latest === written) return
@@ -42,7 +46,7 @@ export function createAutosave(controller: BattleController, adapter: LocalSave,
     }
   }
   function schedule(): void {
-    if (adapter.getBlockedReason() || latest === written || !latest) return
+    if (suspended || retired || adapter.getBlockedReason() || latest === written || !latest) return
     publish({ kind: 'pending', message: '未保存の変更があります（保存待ち）。' })
     clearTimeout(debounce)
     debounce = setTimeout(flush, SAVE_DEBOUNCE_MS)
@@ -53,8 +57,12 @@ export function createAutosave(controller: BattleController, adapter: LocalSave,
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
     flush,
+    // Synchronous replacement transaction: no old flush, including cleanup/pagehide.
+    suspend: () => { suspended = true; clear() },
+    resume: () => { if (!retired) { suspended = false; schedule() } },
+    retire: () => { retired = true; clear(); disconnect?.() },
     connect: () => {
-      if (connected) return () => {}
+      if (connected || retired) return () => {}
       connected = true
       const onCommit = () => {
         const next = controller.getCheckpoint()
@@ -75,7 +83,10 @@ export function createAutosave(controller: BattleController, adapter: LocalSave,
       lifecycle.document.addEventListener('visibilitychange', onHidden)
       onCommit()
       schedule()
-      return () => {
+      let detached = false
+      disconnect = () => {
+        if (detached) return
+        detached = true
         flush()
         connected = false
         unsubscribe()
@@ -83,6 +94,7 @@ export function createAutosave(controller: BattleController, adapter: LocalSave,
         lifecycle.window.removeEventListener('storage', onStorage)
         lifecycle.document.removeEventListener('visibilitychange', onHidden)
       }
+      return disconnect
     },
   }
 }

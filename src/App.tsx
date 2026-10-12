@@ -1,6 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Autosave } from './storage/autosave'
 import { SaveStatus } from './components/SaveStatus'
+import { SaveManagementPanel } from './components/SaveManagementPanel'
+import type { SaveManagement } from './storage/saveManagement'
 import { BattlePanel } from './components/BattlePanel'
 import { ResourcePanel } from './components/ResourcePanel'
 import { PullControls } from './components/PullControls'
@@ -11,7 +13,7 @@ import { StatisticsPanel } from './components/StatisticsPanel'
 import { ResultEffects } from './components/ResultEffects'
 import { createBattleController, type BattleController } from './ui/battleController'
 
-export default function App({ controller: suppliedController, persistence }: { controller?: BattleController; persistence?: Autosave }) {
+export default function App({ controller: suppliedController, persistence, management }: { controller?: BattleController; persistence?: Autosave; management?: SaveManagement }) {
   const [controller] = useState(() => suppliedController ?? createBattleController())
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   useEffect(() => persistence?.connect(), [persistence])
@@ -28,7 +30,8 @@ export default function App({ controller: suppliedController, persistence }: { c
       <UpgradePanel snapshot={snapshot} controller={controller} />
       <FocusPanel snapshot={snapshot} controller={controller} />
       <StatisticsPanel state={snapshot.state} />
-      <footer><a className="return-to-pull" href="#pull-title">PULLへ戻る</a><p>自動保存はこのブラウザ内のみです。Export/Import・削除操作は今後追加します。</p></footer>
+      {management && <SaveManagementPanel management={management} snapshot={snapshot} />}
+      <footer><a className="return-to-pull" href="#pull-title">PULLへ戻る</a><p>自動保存はこのブラウザ内のみです。大切な進行はExportでバックアップしてください。</p></footer>
     </main>
   )
 }

@@ -180,3 +180,31 @@ Phase 8-CへExport/Import・削除・復旧UI、破損データやタブ競合�
 保存失敗後に新たなPULLが確定した場合も、再試行では失敗当時のcheckpointではなく最新のstate/RNGの組を保存することを、容量超過・権限拒否の既存テストへ追加した。本番コード・ゲームコアの変更なし。
 Edgeでsave/battle/progression/effectsの4スクリプトを320/375/1280pxで再実行し、すべて成功した。NORMAL/SPECIALの10,000停止→復元→手動再開の一致、実行途中の再読込、別タブ保存停止も再確認。参考値は1,111実PULLが251ms・rAF36回・保存1回、10,000停止/再読込/再開がNORMAL2,124ms・SPECIAL2,006ms。実機未検証の制限は前述のとおり。
 Phase 8-CではImport前の検証/確認とstate/RNG/settingsの原子的置換に加え、旧checkpointの遅延保存とImport直後の自動保存の競合防止を扱う。
+
+## Phase 8-C：セーブ管理（Issue #27）
+
+### 環境・再現手順
+
+Windows、Node.js 24.21.0、npm 11.19.0、Edge 155.0.4283.45のヘッドレス実ブラウザ。開発サーバーで幅320/375/1280px・高さ900pxを確認した。上記と同じPlaywright任意インストール環境とBROWSER_EXECUTABLE_PATHを使い、`node scripts/verify-save-management-ui.mjs` を実行する。
+
+スクリプトは使い捨てブラウザコンテキストで実行し、通常の利用者の保存データを参照・削除しない。検証用fixtureは開発サーバーの純粋APIで生成し、製品へデバッグURLやチート操作を追加していない。スクリーンショットはnode_modules/.browser-check/manage-320.png、manage-375.png、manage-1280.pngへ出力した。
+
+### 成功したブラウザ検証
+
+- 3幅すべてで実ファイルのExport→削除確認→新規ゲーム→ファイル選択→Import確認→再読込→保留PULLの手動再開が成功。ダウンロードしたJSONがstate/RNG/settingsの確定checkpointと一致し、Import後も全値が一致する。
+- NORMAL基本200＋CHAIN3、SPECIAL固定予約10をそれぞれ復元し、自動実行なしで再開。純粋なゲームコアの参照計算と最終GameState・RNGが一致した。
+- 3強化Lv・実支払台帳・RS・Focus・演出軽減・累積統計・Stage51のクリア済み状態を保持し、過去ハイライトや初回クリア演出を再発行しない。
+- 削除後はStage1・統計0・新しいRNG seedとなり、別キーは保持される。新規状態の自動保存も正常。
+- Esc、取消、Tab/Shift+Tab循環、Enterによる確認開始/取消、元ボタンへのフォーカス復帰を確認。Import取消・削除取消では既存データ不変。3幅で横スクロールなし、ページ例外0件。
+- 不正JSON・未来版・128 KiB超過は確認ダイアログを開かず拒否。容量不足をsetItemへの例外注入で再現し、元の保存rawを維持してエラー表示。
+- 2タブで確認ダイアログ表示中に他タブが更新すると、確定は拒否され元データを保持する。破損rawは自動上書きされず、UNVERIFIED名のバックアップファイルが原文と一致し、確認付きImportで明示復旧できた。
+- 既存verify-save-ui / battle-ui / progression-ui / effects-uiをすべて再実行して成功。10,000実PULL停止と復元/再開の契約も維持。参考値は1,111実PULLが252ms、rAF37回、保存1回。時間値はCI閾値にしない。
+
+### 自動テスト・未検証事項
+
+保存管理のI/Oと再読込を注入して、旧Autosaveの遅延タイマー・pagehide・cleanup・再connectが置換後に書戻さないことを検証する。置換I/O呼出しの最中にflushしても保存されず、書込/削除失敗時は元raw/画面/RNGを保持して通常保存へ戻る。確認中の通常Autosaveによるraw変更も再確認対象とする。
+既存1,203件＋新規44件＝総1,247件（24ファイル）が成功。npm ci・typecheck・lint・test・buildはすべて成功した。
+
+実機Android/iOS・Safari、公開ページへの反映、OSのダウンロード制限、実際の容量枯渇/プライバシー設定は未検証。容量/権限拒否は自動テストとブラウザへの例外注入で確認した。localStorageの読取→書込にはCASがなく、完全同時のタブ書込み排他は保証しない。確認時rawの照合とstorageイベントによる保護を維持する。
+
+Phase 9へ公開版のファイル操作・実機/別ブラウザ・長時間実プレイの確認を引き継ぐ。抽選・倍率・価格・ゲームコアの変更、バランス調整は行っていない。
