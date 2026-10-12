@@ -3,7 +3,7 @@ import { formatNumber as n } from '../ui/format'
 
 export function PullResultSummary({ snapshot }: { snapshot: BattleSnapshot }) {
   const result = snapshot.result
-  return <section aria-labelledby="result-title"><h2 id="result-title">今回の結果</h2>
+  return <section aria-labelledby="result-title"><h2 id="result-title">直前のPULL結果</h2>
     {!result ? <p className="muted">PULLすると集計を表示します。</p> : <>
       <p>{result.kind === 'normal' ? 'NORMAL' : 'SPECIAL'} · {snapshot.busy ? '集計中' : result.value.pendingPulls ? '保留あり' : '完了'}</p>
       <dl className="resource-grid">

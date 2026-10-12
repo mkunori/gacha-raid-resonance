@@ -40,7 +40,8 @@ src/
 
 Phase 7-AではAppがBattlePanel（HP・Stage・耐性・クリア）、ResourcePanel（属性・一時効果・RS・ゲージ）、
 PullControls（解放条件・操作・進捗・エラー・再開）、PullResultSummary（固定サイズ集計）を構成する。
-UpgradePanel（購入・確認）や詳細統計・設定画面は7-B以降で追加する。
+Phase 7-BではUpgradePanel（3強化・不可理由）、RespecDialog（無料全返還確認）、FocusPanel（4分布選択）も接続済み。
+詳細統計・演出・設定画面は7-C以降で追加する。
 Reactは表示・入力・確認ダイアログ・結果集計のみを担当し、抽選式を持たない。
 
 まずReact標準の状態管理で十分。アクション実行の境界でコアを呼び、
@@ -54,7 +55,7 @@ Web Workerは実測で必要になった場合のみ検討する。
 `src/ui/battleController.ts`はReact非依存の操作ストア。Appは`useSyncExternalStore`で確定スナップショットを購読する。
 `createBattleController`は初期状態・RNG・チャンクサイズ・描画待ち関数を注入可能。通常はcreateInitialGameStateとMath.randomを使用する。
 作成・購読・render・Effect・React更新関数では抽選しない。ボタンのイベントでstart/resumeを呼び、同期的にbusyを立てて二重受付を拒否する。
-NORMAL/SPECIALの新規操作は保留中も拒否する。強化やFocus操作の接続は7-Bで同じbusy/保留ガードを共有する。
+NORMAL/SPECIALの新規操作は保留中も拒否する。7-Bの強化・RESPEC・Focus操作も同じbusy/保留ガードを共有する。
 
 最初はexecuteNormalPulls/executeSpecialPulls、以降はresumePendingNormalPulls/resumePendingSpecialPullsを呼ぶ。
 既定100実PULL（テスト注入は1〜500）で1チャンクとし、最初の処理前と各チャンク間に16msのsetTimeoutで描画・入力処理へ制御を返す。
@@ -75,7 +76,29 @@ StrictModeの購読解除/再購読だけでは操作を開始しない。予約
 スナップショットは直接変更しない。保存・RNG永続化はPhase 8まで未実装で、再読込時には初期化されることを画面に明示する。
 
 表示専用formatNumberは大数を科学表記、小数を最大2桁へ整形し、非有限値は「—」とする。HPバー割合は0〜100にクランプし数値・ARIAテキストを併記する。
-Vitestの既存node環境を維持し、App.test.tsxだけjsdom・Testing Library・user-eventを使う。固定RNGとストア注入で実際のコア/API接続・StrictMode・競合・再開・キーボードを検証する。
+Vitestの既存node環境を維持し、React UIテストだけjsdom・Testing Library・user-eventを使う。固定RNGとストア注入で実際のコア/API接続・StrictMode・競合・再開・キーボードを検証する。
+
+### Phase 7-Bの同期操作と確認UI（Issue #17）
+
+Controllerに`purchase(upgrade, expectedState)`、`respec(expectedState)`、`changeFocus(focus, expectedState)`を追加。
+expectedStateは表示時のGameState参照で、更新対象ではなく楽観的排他用のトークン。busy → 保留キュー → 最新stateとの参照一致を検証し、
+最新stateをそれぞれpurchaseUpgrade / respecUpgrades / setFocusへ渡す。成功時は戻り値を1回publishしtrue、失敗時はstate・PULL summary・RNGを保持して通知のみ更新しfalse。
+正常な安全一時停止やエラー後でも保留中なら育成操作を拒否する。各同期APIはRNGを使わず、10,000上限やチャンク再開を変更しない。
+古い参照での重複送信は拒否する。最新参照を取り直した操作は新しい1操作として扱う。
+
+UpgradePanelはgetUpgradeInfo / isUpgradeUnlocked / UPGRADE_RULESから価格・理由・解放・倍率を表示する。RS/Lvの独自更新は行わない。
+クリックdetailが2以上の購入イベントは無視し、通常のダブルクリックを1購入として扱う。キーボードや新しい単発クリックで手動1Lvずつ購入できる。
+前回PULLのsummaryは育成操作では変更せず「直前のPULL結果」として表示し、育成の成功・失敗は別のライブ領域noticeで通知する。
+
+RESPECはローカルReact stateに確認の開閉のみを持つ。native dialog.showModalで背景をinertにし、キャンセルを初期フォーカスとする。
+台帳の表示合計・全3種の現Lv・全Lv0・無料を提示。確認中も表示は最新stateから導出し、確定時にControllerが再検証する。
+確定ハンドラーはrefで1回に限定し、確定前のstateを二重送信しない。キャンセル/Escはコアを呼ばない。Tab/Shift+Tabを2ボタン間で循環する。
+閉じたら元ボタンへフォーカスを戻す。確定後に元ボタンが無効になった場合は強化見出しへ戻す。台帳0ならRESPECボタンを無効化する。
+jsdomではdialogのopen状態のみ模擬し、実際のモーダル・背景抑制・フォーカスはEdgeで確認する。
+
+FocusPanelは既存FOCUS_PROBABILITIESから4種類の属性確率を表示し、state.focusをラジオの唯一の選択値とする。
+highestStageで解放判定しStage6前はBALANCED固定。busy/保留中はfieldsetごと無効化する。
+保存・詳細演出・統計画面・×MAX強化・自動購入は追加しない。
 
 ## GameState案
 
@@ -300,7 +323,7 @@ RS・Lv・台帳・合計は安全整数で検証する。Lv0/支払非0、支�
 呼び出し側が直接編集する場合はstructuredClone等で分離する。この契約と更新対象レコードの分離はテスト済み。
 戦闘エンジンは各PULLで既存upgradeLevelsを読むため、エンジン側の変更や重複した倍率状態は不要。
 購入後・RESPEC後のNORMAL/共鳴/SPECIAL/JACKPOT火力、特殊ボス倍率、既存バフ・統計・戦闘RS保持を統合テストで確認する。
-Phase 7は手動購入とRESPEC確認UIを接続する。保存移行・不正台帳修復はPhase 8、×MAX/自動購入は対象外。
+Phase 7-Bで手動購入とRESPEC確認UIを接続済み。保存移行・不正台帳修復はPhase 8、×MAX/自動購入は対象外。
 
 ## 乱数とテスト
 

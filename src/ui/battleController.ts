@@ -1,11 +1,13 @@
 import { createInitialGameState, executeNormalPulls, executeSpecialPulls, resumePendingNormalPulls, resumePendingSpecialPulls } from '../game/engine'
-import type { GameState, NormalPullBatchResult, NormalPullCount, RandomSource, SpecialPullBatchResult, SpecialPullCount } from '../types/game'
+import { setFocus } from '../game/progression'
+import { purchaseUpgrade, respecUpgrades } from '../game/upgrades'
+import type { Focus, GameState, NormalPullBatchResult, NormalPullCount, RandomSource, SpecialPullBatchResult, SpecialPullCount, Upgrade } from '../types/game'
 
 export type Operation = { kind: 'normal'; count: NormalPullCount } | { kind: 'special'; count: SpecialPullCount }
 export type ResultSummary = { kind: 'normal'; value: NormalPullBatchResult['summary'] } | { kind: 'special'; value: SpecialPullBatchResult['summary'] }
 /** Per start/resume call, including CHAIN; not a game-balance limit. */
 export const UI_AUTO_PULL_LIMIT = 10_000
-export interface BattleSnapshot { state: GameState; busy: boolean; paused: boolean; error: string | null; result: ResultSummary | null; startStage: number }
+export interface BattleSnapshot { state: GameState; busy: boolean; paused: boolean; error: string | null; notice: { kind: 'success' | 'error'; text: string } | null; result: ResultSummary | null; startStage: number }
 
 /** Fixed-size aggregates: latest pending replaces; clear is OR; counters add. */
 export function mergeSummary(previous: ResultSummary | null, next: ResultSummary): ResultSummary {
@@ -45,16 +47,31 @@ export function createBattleController(options: { initialState?: GameState; rng?
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new RangeError('UI chunk size must be 1–500')
   const wait = options.yieldFrame ?? yieldToBrowser
   const state = options.initialState ?? createInitialGameState()
-  let snapshot: BattleSnapshot = { state, busy: false, paused: false, error: null, result: null, startStage: state.stage }
+  let snapshot: BattleSnapshot = { state, busy: false, paused: false, error: null, notice: null, result: null, startStage: state.stage }
   const listeners = new Set<() => void>()
   let active: AbortController | null = null
   const publish = (next: BattleSnapshot) => { snapshot = next; listeners.forEach((listener) => listener()) }
   const pending = () => snapshot.state.pendingNormalPulls + snapshot.state.pendingSpecialPulls
+  /** Rendered state is an optimistic concurrency token, never an alternative source.
+   * Validate against the latest state; no RNG, queued updates or partial commits. */
+  function update(expectedState: Readonly<GameState>, transform: (current: GameState) => GameState, message: string): boolean {
+    try {
+      if (snapshot.busy) throw new Error('PULL処理中は変更できません')
+      if (pending()) throw new Error('保留PULLをすべて再開してから変更してください')
+      if (expectedState !== snapshot.state) throw new Error('表示が更新されました。最新の内容を確認して操作してください')
+      const next = transform(snapshot.state)
+      publish({ ...snapshot, state: next, notice: { kind: 'success', text: message } })
+      return true
+    } catch (error) {
+      publish({ ...snapshot, notice: { kind: 'error', text: `操作できません：${error instanceof Error ? error.message : '不明なエラー'}` } })
+      return false
+    }
+  }
   async function run(operation?: Operation): Promise<boolean> {
     if (snapshot.busy || (operation && pending()) || (!operation && !pending())) return false
     const token = new AbortController()
     active = token
-    publish({ ...snapshot, busy: true, paused: false, error: null, result: operation ? null : snapshot.result, startStage: operation ? snapshot.state.stage : snapshot.startStage })
+    publish({ ...snapshot, busy: true, paused: false, error: null, notice: null, result: operation ? null : snapshot.result, startStage: operation ? snapshot.state.stage : snapshot.startStage })
     try {
       await wait(token.signal)
       let first = true
@@ -105,6 +122,9 @@ export function createBattleController(options: { initialState?: GameState; rng?
     },
     start: (operation: Operation) => run(operation),
     resume: () => run(),
+    purchase: (upgrade: Upgrade, expectedState: Readonly<GameState>) => update(expectedState, (current) => purchaseUpgrade(current, upgrade), `${upgrade.replaceAll('_', ' ')}を1Lv購入しました。`),
+    respec: (expectedState: Readonly<GameState>) => update(expectedState, respecUpgrades, 'RESPEC完了：全強化をLv0に戻し、支払済みRSを全額返還しました。'),
+    changeFocus: (focus: Focus, expectedState: Readonly<GameState>) => update(expectedState, (current) => setFocus(current, focus), `Focusを${focus}に変更しました（無料）。`),
   }
 }
 export type BattleController = ReturnType<typeof createBattleController>
