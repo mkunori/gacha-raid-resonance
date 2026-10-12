@@ -11,8 +11,8 @@ docs/                   仕様、設計、段階的な計画
 src/
   components/           表示と操作のコンポーネント
   data/rules.ts         v0.6確率・倍率・コスト・解放設定（初期定義）
-  game/                 今回は責務READMEのみ。コアは後続PRで追加
-    gacha.ts            抽選
+  game/                 通常抽選・H1実装済み。他のコアは後続PRで追加
+    gacha.ts            独立抽選とH1スタック加算
     resonance.ts        共鳴
     combat.ts           ダメージ
     boss.ts             ボス・Stage進行
@@ -20,6 +20,7 @@ src/
     engine.ts           逐次処理と状態確定
   storage/              今回は責務READMEのみ。保存アダプターは後続
   types/game.ts         UI非依存の型契約案
+  test/                 テスト専用の固定列・固定シードRNG
   App.tsx               画面の構成
   main.tsx              React起動
   styles.css            レスポンシブな表示
@@ -65,6 +66,28 @@ GameEventは抽選結果、チャネル別ダメージ、共鳴、討伐、報�
 ## 抽選とダメージの分離
 
 gachaはRNGから属性・レアリティ・追加効果をそれぞれ独立に抽選し、NormalPullResultを返す。
+通常抽選とH1の公開APIは実装済み。以下の戦闘・SPECIAL・engineは後続PRの設計である。
+
+### 通常ガチャの公開API（Issue #3）
+
+- `drawNormalPull(focus: Focus, rng: RandomSource): NormalPullResult`
+  はレアリティ → 属性 → 追加効果の順で各1回、計3回だけRNGを消費する。
+  列挙順は明示した配列で固定し、確率は既存rules.tsを参照する。
+  各区間は下端以上・上端未満。境界と一致した値は次区間に入る。
+  v0.6の確率はすべて整数％なので、各確率を整数％へ変換して累積し、100で割った閾値と比較する。
+  これにより0.92+0.02等の二進浮動小数点誤差で境界がずれることを防ぐ。
+  将来、端数％を採用する場合は閾値の表現精度とテストを同じPRで更新する。
+- RNGは有限なnumberかつ0以上1未満が必須。不正値はRangeErrorで即時停止し、再抽選しない。
+  失敗までに消費した乱数は巻き戻さない。不正FocusはRangeError、RNG消費0回。
+- `applyNormalPullStacks(stacks: Readonly<Record<Element, number>>, result: Readonly<Pick<NormalPullResult, 'element' | 'rarity'>>): Record<Element, number>`
+  はH1を既存NORMAL_RARITIESから取得し、選ばれた属性だけを加算してCORE_RULES.stackCapで切り捨てる。
+  全属性の入力は整数0〜12、属性/等級は既知値を要求し、違反はRangeError。
+  常に新しいオブジェクトを返し、入力を変更しない。完全なNormalPullResultも渡せるが追加効果は参照しない。
+- Stage解放ガード、共鳴消費、H2、CHAIN/CHARGE/BOOSTの発動、ダメージ、保存は担当しない。
+  両APIはReact・ストレージ・Math.randomに依存しない。
+
+### 後続の戦闘計算
+
 SPECIALの結果も独立した抽選関数とする。抽選関数はHPを変更しない。
 combatは確定結果とA・一時効果・ボス補正からダメージを計算し、乱数を使わない。
 チャネルは通常／共鳴／SPECIAL／JACKPOTを明示し、JACKPOTに通常耐性を誤適用しない。
@@ -83,8 +106,9 @@ CHAINの安全上限100,000では未実行の個数をpendingNormalPullsに残�
 ## 乱数とテスト
 
 RandomSourceは[0,1)を返す注入関数。通常利用は境界でMath.randomを渡す。
-テストでは固定列（境界値・特定順序）と固定シードPRNGをテスト用ヘルパーで用意する。
-テスト用PRNGのアルゴリズムと種を固定し、失敗時に種を表示する。
+src/test/random.tsに固定列（枯渇時は例外）とMulberry32の固定シードRNGを実装済み。
+固定シードは0x12345678（テスト名にも記載）。seed 1の既知出力でもアルゴリズムを固定する。
+これらはテスト専用で本番の抽選APIには含めない。
 確率閾値の直前/一致/直後、合計100%、独立抽選の消費順を検証する。
 同じ固定乱数列で×1反復と×10/100/1000の最終状態・イベント集計を比較する。
 確率分布の統計テストを使う場合は固定種・許容範囲を明示し、ランダムなCI失敗を避ける。
