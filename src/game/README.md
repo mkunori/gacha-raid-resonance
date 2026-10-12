@@ -2,16 +2,19 @@
 
 このディレクトリにUI・ストレージ非依存の純粋関数を追加する。
 通常独立抽選・H1/H2と基本戦闘・3共鳴・追加効果・単一/一括PULLエンジンを実装済み。
+手動SPECIAL・固定回数の×MAXと再開・Stage20以降のJACKPOTも実装済み。
 UI・保存への接続はなく、未実装関数のダミーや空モジュールは置かない。
 
 | モジュール | 責務 |
 | --- | --- |
 | gacha.ts（実装済み） | drawNormalPullで独立抽選、applyNormalPullStacksでH1加算。新しい値を返し、入力を変更しない。ダメージ・追加効果を適用しない |
 | resonance.ts（実装済み） | findNextResonance / resolveResonances：優先順位・3+3消費・FLAME/THUNDER予約・OVERLOAD・H2/BOOST乗算・複数共鳴 |
-| combat.ts（実装済み） | calculateAttack / calculateNormalDamage / calculateResonanceDamage：基礎A・通常/共鳴ダメージ。SPECIAL/JACKPOTは後続 |
+| combat.ts（実装済み） | calculateAttack / calculateNormalDamage / calculateResonanceDamage：基礎A・通常/共鳴ダメージ |
+| special.ts（実装済み） | drawSpecialPull / calculateSpecialDamage / calculateSpecialMaxCount：独立1乱数抽選・SPECIALチャネル火力・開始時予約数 |
+| jackpot.ts（実装済み） | resolveJackpot：元Stage基準の100件区間・SSR閾値・独立ボーナス計算 |
 | boss.ts（実装済み） | calculateBossMaxHp / calculateBossReward / applyBossDamage / finishBossDefeat：通常HP/報酬・PULL終了後の遷移。特殊補正は後続 |
-| engine.ts（実装済み） | createInitialGameState / executeNormalPull：実PULL単位の状態・イベント確定。executeNormalPulls / resumePendingNormalPulls：CHAIN付き一括処理・上限・集計・再開。SPECIAL/JACKPOTは後続 |
-| validation.ts（実装済み） | コア数値・スタック・一時効果の共通検証。保存JSONのスキーマ検証は担当しない |
+| engine.ts（実装済み） | createInitialGameState、executeNormalPull(s) / resumePendingNormalPulls、executeSpecialPull(s) / resumePendingSpecialPulls：実PULL確定・キュー・上限・集計・再開 |
+| validation.ts（実装済み） | コア数値・スタック・一時効果・JACKPOT区間・NORMAL/SPECIALキューの整合性。保存JSONのスキーマ検証は担当しない |
 | upgrades.ts（未実装） | 手動購入、価格、支払済みRS、RESPEC |
 
 詳細: [技術設計](../../docs/TECHNICAL_DESIGN.md)。
@@ -22,3 +25,9 @@ UI・保存への接続はなく、未実装関数のダミーや空モジュー
 空なら基本PULLを1回実行する。生成したCHAINはキューに残すため、×1操作全体にはexecuteNormalPullsを使う。
 入出力は不変スナップショットとして扱う。空キュー再開は入力参照をそのまま返す。
 例外時に入力は変わらないがRNGは巻き戻さない。再開時は同じRNGの続きが必要。
+
+`executeSpecialPulls(state, 1 | 'MAX', rng, limit?)`は手動の新規操作。
+×MAXは開始時のfloor(gauge/30)を予約し、`resumePendingSpecialPulls`で残回数だけ再開する。
+`executeSpecialPull`は1実SPECIALの低レベルAPIで、保留中なら予約を1件進める。
+NORMAL/SPECIALどちらかに保留があれば他種の処理・新規操作は拒否する。
+SPECIALは1乱数だけ消費し、NORMALの効果時間やJACKPOT区間を進めない。

@@ -15,8 +15,10 @@ src/
     gacha.ts            独立抽選とH1スタック加算
     resonance.ts        3共鳴・予約効果・H2/BOOST消費・反復判定
     combat.ts           基礎A・通常/共鳴ダメージ
+    special.ts          独立SPECIAL抽選・火力・MAX予約数
+    jackpot.ts          Stage20以降の区間集計・ボーナス計算
     boss.ts             通常ボス・PULL終了後のStage進行
-    validation.ts       数値・スタック・一時効果の検証
+    validation.ts       数値・スタック・一時効果・区間/キュー整合性の検証
     upgrades.ts         購入・RESPEC（未実装）
     engine.ts           初期状態・実PULL統合・CHAINキュー・一括/再開・集計
   storage/              今回は責務READMEのみ。保存アダプターは後続
@@ -48,7 +50,7 @@ Web Workerは実測で必要になった場合のみ検討する。
 
 型の詳細は[src/types/game.ts](../src/types/game.ts)。
 Stage・最高Stage・現在HP・3属性スタック、GAUGE、RS、強化Lv、支払済みRS、
-CATALYST、フォーカス、一時効果、JACKPOT区間、未実行通常PULL数、基本/CHAIN残数、統計を保持する。
+CATALYST、フォーカス、一時効果、JACKPOT区間、未実行通常PULL数、基本/CHAIN残数、SPECIAL予約残数、統計を保持する。
 統計は通常/SPECIAL回数、SSR、共鳴種類別回数、ボス撃破、JACKPOTを含む。
 表示設定はGameStateと分離してSaveDataV1に格納する。
 ボス最大HP・基礎攻撃力・価格・解放状態はStage/強化Lv/設定から導出し、
@@ -68,7 +70,7 @@ Phase 2ではCombatEvent / CombatResultを実装済み。汎用GameActionは必�
 ## 抽選とダメージの分離
 
 gachaはRNGから属性・レアリティ・追加効果をそれぞれ独立に抽選し、NormalPullResultを返す。
-通常抽選・H1/H2・基本戦闘・追加効果・単一/一括PULLは実装済み。SPECIAL・JACKPOTは後続PRで扱う。
+通常抽選・H1/H2・基本戦闘・追加効果・単一/一括PULL・手動SPECIAL・JACKPOTは実装済み。
 
 ### 通常ガチャの公開API（Issue #3）
 
@@ -95,8 +97,8 @@ combatは確定結果とA・一時効果・ボス補正からダメージを計�
 チャネルは通常／共鳴／SPECIAL／JACKPOTを明示し、JACKPOTに通常耐性を誤適用しない。
 HP/RS/価格は仕様のceilのみ、ダメージは途中丸めせず、表示のみ丸める。
 
-単一PULL engineは抽選→通常攻撃→H1→SSRのCATALYST取得→全共鳴→基本ゲージ→追加効果→討伐確定の順で処理する。
-CATALYSTは同一PULL共鳴にも適用し、BOOST取得は共鳴後。JACKPOTはPhase 4で追加効果後・討伐遷移前へ挿入する。
+単一PULL engineは抽選→通常攻撃→H1→SSRのCATALYST取得→全共鳴→基本ゲージ→追加効果→JACKPOT→討伐確定の順で処理する。
+CATALYSTは同一PULL共鳴にも適用し、BOOST取得は共鳴後。JACKPOTは追加効果後・討伐遷移前に実装済み。
 余剰ダメージは捨て、未実行PULLは次Stageへ。共鳴ループにはガードを持つ。
 BOOST/THUNDER/FLAME/属性スタックを討伐で初期化し、CATALYST/GAUGE/JACKPOT区間は保持する。
 
@@ -133,6 +135,7 @@ THUNDERは既存予約を現在共鳴で使って消費してから、THUNDERで
 Phase 3ではBOOSTとCATALYSTの取得・消費・ダメージ乗算も適用する（下記）。
 討伐時は属性とBOOST/THUNDER/FLAMEをリセットし、ゲージ・CATALYST・フォーカス・強化・支払台帳・キュー・JACKPOT区間は保持する。
 更新する統計は通常PULL、SSR、種類別共鳴、討伐数と最高Stageのみ。他機能の統計は保持する。
+Phase 4ではSPECIAL回数とJACKPOT発動回数も対応する実行時に更新する。
 
 Phase 2では全Stageが通常ボス倍率1.0。特殊ボスはPhase 5でチャネル別の倍率選択を接続する。
 Stage 50撃破後は共通のStage+1を行い、終了状態を仮実装しない。最終仕様確定時の変更はboss.tsに局所化する。
@@ -146,7 +149,7 @@ HPとダメージの小数は保持し、途中整数丸めをしない。数値
   キューがあればCHAINを優先して1件消費し、空なら暗黙の基本PULLを1回実行する。
   CHAINが生成した3件はキューへ残す。ユーザーの×1操作全体は次のexecuteNormalPullsを使う。
 - `executeNormalPulls(state, count: 1 | 10 | 100 | 1000, rng, limit?: number): NormalPullBatchResult`
-  は新規操作。既存キューが空であることを要求し、基本PULLを予約して共通再開処理へ渡す。
+  は新規操作。NORMAL/SPECIAL両キューが空であることを要求し、基本PULLを予約して共通再開処理へ渡す。
 - `resumePendingNormalPulls(state, rng, limit?: number): NormalPullBatchResult`
   は既存キューのみを反復処理する。limitは整数1〜100,000、既定値はCORE_RULES.operationPullLimit。
   Stageによる回数の解放制御は未実装。再開に新しい基本PULLを追加しない。
@@ -165,13 +168,51 @@ BOOSTは共鳴時に全消費して(1+0.25×個数)を乗算し、THUNDER/FLAME/
 CHARGEは別途source: chargeのgauge-gainedも返す。SPECIALは自動実行しない。
 
 一括返却は最終stateと固定サイズsummaryのみ。summaryはこの呼び出し中の実PULL・CHAIN追加・残数・SSR、
-種類別共鳴/追加効果、進行Stage数、獲得RSを持つ。各実PULLのイベントは集計後に捨てる。
+種類別共鳴/追加効果、JACKPOT発動数、進行Stage数、獲得RSを持つ。各実PULLのイベントは集計後に捨てる。
 分割したsummaryは残数を除き加算可能で、最終残数は最後のsummaryを使う。
 100,000上限は全効果・討伐遷移が完了したPULL境界で判定する。入力は変更せず、空キューの再開だけは同一state参照を返す。
 呼び出し側は入出力を不変スナップショットとして扱う（finishBossDefeatと同じ契約）。
 途中の例外では部分stateを返さず入力を維持するが、消費済みRNGは巻き戻せない。
 状態のJSON往復と同じRNGの続きを渡した再開は、一度に処理した場合と一致する。
 永続化とRNG状態保存はPhase 8で扱う。ゲームの公開乱数に暗号学的保証は要求しない。
+
+### Phase 4の公開API・SPECIAL予約とJACKPOT（Issue #9）
+
+| API | 入力 → 出力 / 責務 |
+| --- | --- |
+| special.drawSpecialPull | RandomSource → SpecialResult。STRIKE/BURST/MEGA_BURST、独立1乱数 |
+| special.calculateSpecialDamage | A、SpecialResult、SPECIAL POWER Lv、任意SPECIALボス倍率（既定1） → 丸めないダメージ |
+| special.calculateSpecialMaxCount | 非負安全整数ゲージ → floor(gauge/30) |
+| jackpot.resolveJackpot | 区間、元Stage、rarity、A → 新区間、区間完了/当選フラグ、SSR数、独立ダメージ、ゲージ増分 |
+| engine.executeSpecialPull | GameState、RNG → CombatResult。1実SPECIALだけ進め、予約があれば1件消費 |
+| engine.executeSpecialPulls | GameState、1 または 'MAX'、RNG、任意limit → SpecialPullBatchResult。新規手動操作 |
+| engine.resumePendingSpecialPulls | GameState、RNG、任意limit → SpecialPullBatchResult。確定済み残数だけ再開 |
+
+SPECIALも低レベル実PULLとユーザー操作全体を分離する。UIはexecuteSpecialPullsを使用し、
+保留時は対応するresume APIを使う。いずれのキューが保留中でも新しいNORMAL/SPECIAL操作は拒否する。
+実NORMAL/再開NORMALはSPECIAL保留中に拒否し、実SPECIAL/再開SPECIALはNORMAL保留中に拒否する。
+
+×MAXは開始時のfloor(specialGauge/30)をpendingSpecialPullsへ固定し、各SPECIALで30ゲージと残数1を消費する。
+残数は安全整数かつfloor(現在ゲージ/30)以下、NORMALキューとの同時保有不可。
+再開はゲージから再計算せず予約だけ実行する。limitは整数1〜100,000、既定はCORE_RULES.operationPullLimit。
+ゲージ不足の新規操作はRNG0回・状態非破壊でRangeError。空キューの再開は入力参照を返す。
+入力検証後にSPECIAL抽選を1回行い、特殊チャネルダメージを適用し、最後に共通finishBossDefeatを呼ぶ。
+全ネスト状態をコピーする処理はNORMAL/SPECIALで共用する。例外時は入力を変更せず、RNGは巻き戻さない。
+特殊ボス用の倍率受け口だけを設け、Stage別補正は未実装。SPECIALで通常効果の寿命や共鳴・JACKPOTは進めない。
+
+SPECIALのイベント順はspecial-pull → gauge-spent → special-damage → 必要ならboss-defeated/stage-started。
+SpecialPullBatchResult.summaryは呼び出し内のactualPulls、pendingPulls、gaugeSpent、stagesAdvanced、earnedShards、
+結果種別resultCountsのみ。イベント全文を保持せず、残数以外はチャンク間で加算できる。
+
+JACKPOT区間は元StageがUNLOCK_STAGES.jackpot（20）以上の実NORMALだけで進める。
+Stage19討伐PULLは除外し、Stage20最初のPULLから開始する。Stage20前の非ゼロ区間はRangeError。
+100件目のSSRを含めて3個以上ならA×180とゲージ+30、当選/未達とも区間をゼロへ戻す。
+SPECIAL・討伐・操作終了では区間をリセットしない。CHAINと分割再開も同じ100件区間を使う。
+追加効果後・討伐確定前に判定し、HP<=0でも元Stageに対して全処理を終える。
+jackpot-windowイベントは区間完了時だけ発行し、元Stage、SSR数、triggered、damage、gaugeGainを持つ。
+当選ならsource: jackpotのgauge-gainedも発行し、statistics.jackpotCountとNORMAL summary.jackpotCountを更新する。
+JACKPOTは独立チャネルで通常/共鳴/SPECIAL倍率を適用しない。追加のRNGや自動PULLは発生させない。
+JACKPOTのStage20開始だけ先行実装し、その他の解放はPhase5。SPECIAL予約とRNGの永続化はPhase8。
 
 ## 乱数とテスト
 

@@ -37,6 +37,8 @@ export interface GameState {
   pendingNormalPulls: number
   /** CHAIN group is drained before the next requested base pull. Sum equals pendingNormalPulls. */
   normalPullQueue: { base: number; chain: number }
+  /** Fixed remaining SPECIAL count; never recomputed from gauge on resume. */
+  pendingSpecialPulls: number
   statistics: {
     totalNormalPulls: number
     totalSpecialPulls: number
@@ -62,10 +64,14 @@ export type CombatEvent =
   | { type: 'normal-damage'; stage: number; damage: number }
   | { type: 'resonance'; stage: number; resonance: Resonance; damage: number; catalystConsumed?: true; boostConsumed?: number }
   | { type: 'catalyst-gained'; stage: number; amount: number }
-  | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' | 'charge' }
+  | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' | 'charge' | 'jackpot' }
   | { type: 'additional-effect'; stage: number; effect: AdditionalEffect; applied: boolean; amount?: number }
   | { type: 'boss-defeated'; stage: number; reward: number }
   | { type: 'stage-started'; stage: number; maxHp: number }
+  | { type: 'special-pull'; stage: number; result: SpecialResult }
+  | { type: 'gauge-spent'; stage: number; amount: number; source: 'special' }
+  | { type: 'special-damage'; stage: number; damage: number }
+  | { type: 'jackpot-window'; stage: number; ssrCount: number; triggered: boolean; damage: number; gaugeGain: number }
 
 export interface CombatResult {
   state: GameState
@@ -84,7 +90,22 @@ export interface NormalPullBatchResult {
     stagesAdvanced: number
     earnedShards: number
     ssrCount: number
+    jackpotCount: number
     resonanceCounts: Record<Resonance, number>
     effectCounts: Record<AdditionalEffect, number>
+  }
+}
+
+export type SpecialPullCount = 1 | 'MAX'
+
+export interface SpecialPullBatchResult {
+  state: GameState
+  summary: {
+    actualPulls: number
+    pendingPulls: number
+    gaugeSpent: number
+    stagesAdvanced: number
+    earnedShards: number
+    resultCounts: Record<SpecialResult, number>
   }
 }
