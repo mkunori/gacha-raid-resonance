@@ -24,8 +24,8 @@ src/
     validation.ts       数値・スタック・一時効果・区間/キュー整合性の検証
     upgrades.ts         1Lv価格・購入情報・手動購入・台帳・全額RESPEC
     engine.ts           初期状態・実PULL統合・CHAINキュー・一括/再開・集計
-  storage/              今回は責務READMEのみ。保存アダプターは後続
-  types/game.ts         UI非依存の型契約案
+  storage/              saveCodec（完全検証・JSON変換）、random（RNGチェックポイント）
+  types/game.ts         UI非依存のゲーム・保存型契約
   test/                 テスト専用の固定列・固定シードRNG
   App.tsx               画面の構成
   main.tsx              React起動
@@ -355,7 +355,7 @@ RS・Lv・台帳・合計は安全整数で検証する。Lv0/支払非0、支�
 呼び出し側が直接編集する場合はstructuredClone等で分離する。この契約と更新対象レコードの分離はテスト済み。
 戦闘エンジンは各PULLで既存upgradeLevelsを読むため、エンジン側の変更や重複した倍率状態は不要。
 購入後・RESPEC後のNORMAL/共鳴/SPECIAL/JACKPOT火力、特殊ボス倍率、既存バフ・統計・戦闘RS保持を統合テストで確認する。
-Phase 7-Bで手動購入とRESPEC確認UIを接続済み。保存移行・不正台帳修復はPhase 8、×MAX/自動購入は対象外。
+Phase 7-Bで手動購入とRESPEC確認UIを接続済み。保存入口の厳密な台帳検証はPhase 8-Aで実装済み。台帳を自動修復しない。×MAX/自動購入は対象外。
 
 ## 乱数とテスト
 
@@ -368,7 +368,52 @@ src/test/random.tsに固定列（枯渇時は例外）とMulberry32の固定シ�
 確率分布の統計テストを使う場合は固定種・許容範囲を明示し、ランダムなCI失敗を避ける。
 シミュレーションの中央値は手動SPECIALの絶対期待値にしない。
 
-## セーブ・ロード（未実装）
+## 保存形式・検証（Phase 8-A / Issue #23、実装済み）
+
+`SaveDataV1 = { saveVersion: 1, state: GameState, settings: { reducedEffects: boolean }, rng: { algorithm: 'mulberry32-v1', state: number } }`。
+全GameStateを保持する。GameStateの意味・確率・計算式・抽選順は変更しない。
+RNGのstateは0〜2^32−1の整数で「次の乱数を生成する直前」の内部状態。初期seedだけを保存する方式ではない。
+アルゴリズム名には版を含め、将来の変更は新識別子と明示的な対応を必要とする。暗号学的用途には使わない。
+
+公開API:
+
+- `validateSaveData(input: unknown): SaveDataV1`：構造と意味論を検証し、全ネストを分離したコピーを返す。
+- `serializeSaveData(data: SaveDataV1): string`：書出し前にも同じ検証を行う。
+- `deserializeSaveData(json: string): SaveDataV1`：容量確認、JSON.parse、unknownから完全検証。
+- `nextRandom(checkpoint)`：入力を変更せず`{ value, checkpoint }`を返す純粋な1ステップ。
+- `createCheckpointRandom(checkpoint)`：既存RandomSource互換の`random`関数と、独立コピーを返す`getCheckpoint`を持つ決定的アダプター。
+
+JSONは65,536 UTF-16コード単位以下（文字列本体は最大128 KiB相当）。通常2 KiB未満の固定形式に十分な余裕を設け、パース前に上限を確認する。
+必須キーの省略、未知キー、配列/null/型違い、文字列数値、独自プロトタイプ、アクセサー、symbol・非列挙キーを拒否する。
+固定スキーマだけを再構築し、未知のプロパティをコピーしない。自動修復・補完・旧版への架空の移行はない。
+SaveDataError.codeはSYNTAX（構文）、SIZE（上限）、VERSION（未対応保存版）、SCHEMA（構造）、STATE（値域・相互矛盾）。日本語messageを持つ。
+未知のRNG識別子はSTATEとして拒否する。失敗時は入力不変・部分復元なし・RNG消費なし。
+
+検証は既存validation/progression/boss/upgradesと設定値を再利用する。
+Stage/最高StageのHP式が安全に計算可能で、最高Stage>=現在Stage、0<HP<=最大HPを要求する。小数HPを丸めない。
+スタック・触媒・一時効果、Focus解放、非負安全整数の資源/Lv/統計、JACKPOT窓、両キューの合計・排他・SPECIAL予約に必要なゲージを確認する。
+SSR<=NORMAL数、触媒<=SSR、JACKPOTに必要な100PULL/SSR3件と現在窓の非重複、最高Stageに必要な討伐数、討伐数<=両PULL総数、
+共鳴数<=最大獲得スタック数/6も確認する。履歴そのものを完全再構築・認証するものではない。
+
+保存入口の台帳は各強化について`sum(calculateUpgradeCost(upgrade, L), L=0..Lv-1)`と完全一致が必須。
+各Lvのceilを合計し、合計後に丸めない。未解放Lv、Lv0の支払、合計・全額返還後RSの安全整数超過を拒否する。
+価格/累積価格を毎回検証し、現行指数価格は110Lv未満で安全整数限界に到達するため、巨大Lvでも無制限ループにならない。
+ゲーム内部の既存台帳下限検証は維持し、保存入口だけ厳格にする。台帳を推定修復しない。
+将来価格を変更する際は旧価格履歴の扱いと保存版/移行を別途設計する。既存v1台帳を新価格で無断再計算しない。
+クライアントだけの検証は完全な改ざん耐性や購入履歴の真正性を保証しない。
+
+### Phase 8-B / 8-Cへの必須契約（未実装）
+
+8-Bでブラウザseed生成とControllerへの可保存RNG接続を行う。現時点のMath.randomは差し替えていない。
+**最後に成功したチャンクのGameStateとRNG状態を同じ確定境界で対として取得・保存する。**
+現行Controllerは失敗チャンクをコミットしないが消費済みRNGは巻き戻さない。
+したがって8-Bでは最後の成功境界のRNGチェックポイントを別途保持し、未コミット失敗チャンク後のlive RNGと以前のGameStateを組み合わせて保存しない。
+liveでの例外後再開と、最後の成功チェックポイントを再読込した再開は一致保証の対象外。無失敗の中断・復元は同じ乱数列・結果を維持する。
+NORMAL/CHAIN残数・SPECIALの確定済み残回数をそのまま復元し、新規操作の回数として再計算しない。再開は手動操作とする。
+settings.reducedEffectsのみ永続化し、スキップ対象id・busy・summary・highlight・通知は保存しない。
+復元直後に過去ハイライトやStage50初回演出を発行しない。達成表示はhighestStageから導出し、再開後の新規確定分だけ通知する。
+
+## ブラウザのセーブ・ロード（Phase 8-B / 8-C、未実装）
 
 saveVersion: 1を持つJSONをlocalStorageに保存。キー案はgacha-raid-resonance:save。
 ブラウザAPIはstorageに閉じ込め、シリアライズ・検証・移行は純粋関数にする。
@@ -384,7 +429,7 @@ Stage 50以降は第17章の継続プレイ規則を反映する。GAUGEのゲ�
 ストレージ容量超過や利用拒否は捕捉し、保存失敗をUIに表示する。
 Exportは確定した版付きJSON、Importはパース・完全検証後に確認して置換する。
 削除とRESPECも確認を必要とし、RESPECは支払済みRSを返却して台帳をゼロにする。
-初期GameState生成はengine.tsで実装済み。保存機能は未実装。
+初期GameState生成と純粋codec/RNGは実装済み。ブラウザ保存・復元・Export/Import・削除UIは未実装。
 
 ## CIとGitHub Pages
 

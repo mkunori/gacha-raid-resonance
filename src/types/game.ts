@@ -57,6 +57,13 @@ export interface SaveDataV1 {
   saveVersion: 1
   state: GameState
   settings: DisplaySettings
+  rng: RngCheckpoint
+}
+
+/** Internal state immediately before the next draw, not merely the initial seed. */
+export interface RngCheckpoint {
+  algorithm: 'mulberry32-v1'
+  state: number
 }
 
 export type CombatEvent =
