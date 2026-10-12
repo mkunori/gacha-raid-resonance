@@ -1,4 +1,4 @@
-import { CORE_RULES, FOCUS_PROBABILITIES } from '../data/rules'
+import { CORE_RULES, FOCUS_PROBABILITIES, UNLOCK_STAGES } from '../data/rules'
 import type { Focus, GameState } from '../types/game'
 
 /** Reject overflow instead of silently losing integer resources or counters. */
@@ -30,4 +30,27 @@ export function validateTemporary(temporary: Readonly<GameState['temporary']>): 
   safeInteger(temporary.boostCount, 'boostCount', 0, CORE_RULES.boostCap)
   safeInteger(temporary.flameStormPullsRemaining, 'flameStormPullsRemaining', 0, CORE_RULES.flameDurationPulls)
   if (typeof temporary.thunderStormReserved !== 'boolean') throw new RangeError('Invalid THUNDER reservation')
+}
+
+export function validateJackpotWindow(window: Readonly<GameState['jackpot']>, stage: number): void {
+  safeInteger(stage, 'stage', 1)
+  safeInteger(window.pullsInWindow, 'JACKPOT window', 0, CORE_RULES.jackpotWindow - 1)
+  safeInteger(window.ssrInWindow, 'JACKPOT SSR', 0, window.pullsInWindow)
+  if (stage < UNLOCK_STAGES.jackpot && window.pullsInWindow !== 0) {
+    throw new RangeError('JACKPOT window must be empty before Stage 20')
+  }
+}
+
+export function validatePullQueues(state: Readonly<GameState>): void {
+  safeInteger(state.specialGauge, 'specialGauge')
+  safeInteger(state.pendingNormalPulls, 'pendingNormalPulls')
+  safeInteger(state.normalPullQueue.base, 'pending base pulls')
+  safeInteger(state.normalPullQueue.chain, 'pending CHAIN pulls')
+  if (safeInteger(state.normalPullQueue.base + state.normalPullQueue.chain, 'queue sum') !== state.pendingNormalPulls) {
+    throw new RangeError('Queue sum must equal pendingNormalPulls')
+  }
+  safeInteger(state.pendingSpecialPulls, 'pendingSpecialPulls', 0, Math.floor(state.specialGauge / CORE_RULES.specialGaugeCost))
+  if (state.pendingNormalPulls > 0 && state.pendingSpecialPulls > 0) {
+    throw new RangeError('NORMAL and SPECIAL queues cannot coexist')
+  }
 }

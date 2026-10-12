@@ -32,7 +32,7 @@ describe('NORMAL PULL actions and CHAIN queue', () => {
     const rng = vi.fn(sequenceRng([0, 0, 0.93, 0.99, 0, 0.93, ...Array(15).fill(0)]))
     const result = executeNormalPulls(input, 1, rng)
     expect(result.summary).toEqual({
-      actualPulls: 7, chainAdded: 6, pendingPulls: 0, stagesAdvanced: 1, earnedShards: 18, ssrCount: 1,
+      actualPulls: 7, chainAdded: 6, pendingPulls: 0, stagesAdvanced: 1, earnedShards: 18, ssrCount: 1, jackpotCount: 0,
       resonanceCounts: { FLAME_STORM: 0, THUNDER_STORM: 0, OVERLOAD: 0 },
       effectCounts: { NONE: 5, CHAIN: 2, CHARGE: 0, BOOST: 0 },
     })
