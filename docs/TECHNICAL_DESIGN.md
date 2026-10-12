@@ -10,6 +10,7 @@
 docs/                   仕様、設計、段階的な計画
 src/
   components/           表示と操作のコンポーネント
+  ui/                   戦闘操作ストア・チャンク実行・集計結合・表示用数値整形
   data/rules.ts         v0.6確率・倍率・コスト・解放設定（初期定義）
   data/bosses.ts        10特殊ボスの名前・補正因子
   game/                 通常抽選・H1/H2・戦闘・追加効果・一括PULL実装済み
@@ -37,9 +38,9 @@ src/
 
 ## Reactの責務と状態の境界
 
-現在はAppとDevelopmentNoticeでタイトル・開発中案内を表示する。
-将来はBattlePanel（ボスHP・残留属性・耐性）、PullControls（解放条件・操作）、
-UpgradePanel（価格・購入・確認）、StatisticsPanel、SettingsPanelに分割する。
+Phase 7-AではAppがBattlePanel（HP・Stage・耐性・クリア）、ResourcePanel（属性・一時効果・RS・ゲージ）、
+PullControls（解放条件・操作・進捗・エラー・再開）、PullResultSummary（固定サイズ集計）を構成する。
+UpgradePanel（購入・確認）や詳細統計・設定画面は7-B以降で追加する。
 Reactは表示・入力・確認ダイアログ・結果集計のみを担当し、抽選式を持たない。
 
 まずReact標準の状態管理で十分。アクション実行の境界でコアを呼び、
@@ -47,6 +48,31 @@ Reactは表示・入力・確認ダイアログ・結果集計のみを担当し
 RNGはイベントハンドラーでコアに渡し、再描画中やReactの再実行可能な更新関数内で乱数を消費しない。
 大量抽選はチャンクで実行し、実行中の競合操作をガードする。1件ずつDOM更新しない。
 Web Workerは実測で必要になった場合のみ検討する。
+
+### Phase 7-Aの実行制御（Issue #15）
+
+`src/ui/battleController.ts`はReact非依存の操作ストア。Appは`useSyncExternalStore`で確定スナップショットを購読する。
+`createBattleController`は初期状態・RNG・チャンクサイズ・描画待ち関数を注入可能。通常はcreateInitialGameStateとMath.randomを使用する。
+作成・購読・render・Effect・React更新関数では抽選しない。ボタンのイベントでstart/resumeを呼び、同期的にbusyを立てて二重受付を拒否する。
+NORMAL/SPECIALの新規操作は保留中も拒否する。強化やFocus操作の接続は7-Bで同じbusy/保留ガードを共有する。
+
+最初はexecuteNormalPulls/executeSpecialPulls、以降はresumePendingNormalPulls/resumePendingSpecialPullsを呼ぶ。
+既定100実PULL（テスト注入は1〜500）で1チャンクとし、最初の処理前と各チャンク間に16msのsetTimeoutで描画・入力処理へ制御を返す。
+最後に成功したGameStateをストアへ即時コミットし、次は必ずその状態と同じRNG関数の続きで実行する。毎PULLのReact更新はしない。
+mergeSummaryは固定の種別別カウンターを加算し、pendingPullsは最新値、clearedGameはORで結合する。イベント履歴を保持しない。
+statusライブ領域は開始/完了/保留の状態変化を通知し、進捗数値は通常テキストで表示する。
+
+例外時は失敗チャンクをコミットせず最後の成功状態・集計を保持してerrorを表示する。保留キューがあればresumeで再開できる。
+初回チャンクが失敗した場合は新規予約も未コミットとなるため、保留再開ではなく新規操作を再試行する。
+コアの契約どおり失敗チャンクで消費済みのRNGは巻き戻さない。例外を含む実行が無失敗実行と一致する保証はなく、
+無失敗のチャンク分割は同一ストリームで一括実行と一致する。整合性違反が残る場合、再開もコアが拒否して再度停止する。
+
+最後の購読解除（画面破棄）でAbortControllerを中止し、待機タイマーを解除する。古い継続処理は中止トークンを検査し、新しい操作に状態を書き戻さない。
+StrictModeの購読解除/再購読だけでは操作を開始しない。予約が残る場合は明示再開が必要。
+スナップショットは直接変更しない。保存・RNG永続化はPhase 8まで未実装で、再読込時には初期化されることを画面に明示する。
+
+表示専用formatNumberは大数を科学表記、小数を最大2桁へ整形し、非有限値は「—」とする。HPバー割合は0〜100にクランプし数値・ARIAテキストを併記する。
+Vitestの既存node環境を維持し、App.test.tsxだけjsdom・Testing Library・user-eventを使う。固定RNGとストア注入で実際のコア/API接続・StrictMode・競合・再開・キーボードを検証する。
 
 ## GameState案
 
