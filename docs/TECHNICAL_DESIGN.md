@@ -21,7 +21,7 @@ src/
     boss.ts             特性取得・PULL終了後のStage進行/クリアイベント
     progression.ts      highestStageによる解放/クリア判定・Focus切替
     validation.ts       数値・スタック・一時効果・区間/キュー整合性の検証
-    upgrades.ts         購入・RESPEC（未実装）
+    upgrades.ts         1Lv価格・購入情報・手動購入・台帳・全額RESPEC
     engine.ts           初期状態・実PULL統合・CHAINキュー・一括/再開・集計
   storage/              今回は責務READMEのみ。保存アダプターは後続
   types/game.ts         UI非依存の型契約案
@@ -240,7 +240,38 @@ finishBossDefeatは初回Stage50撃破でboss-defeated → game-cleared → stag
 NORMAL/SPECIALの固定サイズsummary.clearedGameはこの呼び出しでの通知発生を示す。複数チャンクはORで集計する。
 達成済みの状態をUIで復元する際はhasClearedGameを使う。Stage51以降も同じHP/RS式と数値安全ガードを維持する。
 討伐リセット契約・FIFO・RNG消費・操作排他・100,000上限・予約保持は変えない。残りPULLは次Stageの補正で処理する。
-クリア画面、強化購入、保存は後続フェーズ。
+クリア画面と保存は後続フェーズ。強化購入はPhase 6で実装済み（下記）。
+
+### Phase 6の公開API・価格と台帳（Issue #13）
+
+| API | 入力 → 出力 / 契約 |
+| --- | --- |
+| upgrades.calculateUpgradeCost | Upgrade、現在Lv → `ceil(baseCost × costGrowth^Lv)`の正安全整数。過大価格・不正Lv・未知の強化はRangeError |
+| upgrades.getUpgradeInfo | GameState、Upgrade → 読み取り専用UpgradeInfo。upgrade、level、nextCost、unlocked、resonanceShards、spentShards、canPurchase、purchaseBlockReason |
+| upgrades.purchaseUpgrade | GameState、Upgrade → RS控除・1Lv加算・対象台帳加算を原子的に適用したGameState |
+| upgrades.respecUpgrades | GameState → 全実支払額を返還し、全Lv/台帳を0にしたGameState |
+
+設定は既存UPGRADE_RULES、解放はprogression.isUpgradeUnlockedを再利用する。すべて純粋関数でRNG・React・ストレージ非依存。
+価格計算は指数演算1回、状態検証とRESPECは固定3種類の走査のみ。Lvに比例する再計算・配列確保は行わない。
+getUpgradeInfoは両キューを含む所有ドメインを検証し、不正stateはRangeError。
+妥当なstateの購入不可理由はPENDING_PULLS → LOCKED → NUMERIC_LIMIT → INSUFFICIENT_RSの優先順。購入可能時はnull。
+次価格が表現範囲外ならnextCost=null。購入は拒否し、妥当な台帳からのRESPECは引き続き可能。
+この読み取りAPIをUIの表示・ボタン状態に使い、実操作でも必ずpurchaseUpgradeで再検証する。
+
+購入は対象だけLv+1、spentShardsに今回価格を加算し、同額を共通RSから控除する。
+RESPECはspentShards合計を返還し、全3種のLv・台帳をゼロへ。価格履歴から返還額を逆算しない。
+RS・Lv・台帳・合計は安全整数で検証する。Lv0/支払非0、支払額<baseCost×Lv、未解放の正Lvを拒否する。
+下限以上の台帳を信頼し、現在価格による累積支払額との一致は要求しない。保有RS＋全台帳も安全範囲内に保ち、返還不能な状態を拒否する。
+検証対象はこのモジュールの資源・Lv・台帳・Stage/最高Stage・キュー。GameState型を前提とし、保存JSON全スキーマの検証や履歴の真正性の証明は行わない。
+戦闘単体APIには台帳検証を追加しないため、既存のLv注入による戦闘計算テストは維持できる。
+
+保留NORMAL（CHAIN含む）/SPECIALがある間は購入・RESPEC不可。完了後のみLvを変えられ、分割再開の等価性を維持する。
+失敗時に入力を変更せず、部分更新を返さない。成功時は新しいルート・upgradeLevels・spentShardsを返す。
+未変更のstacks/temporary/jackpot/statistics/normalPullQueue等は構造共有する不変スナップショット契約。
+呼び出し側が直接編集する場合はstructuredClone等で分離する。この契約と更新対象レコードの分離はテスト済み。
+戦闘エンジンは各PULLで既存upgradeLevelsを読むため、エンジン側の変更や重複した倍率状態は不要。
+購入後・RESPEC後のNORMAL/共鳴/SPECIAL/JACKPOT火力、特殊ボス倍率、既存バフ・統計・戦闘RS保持を統合テストで確認する。
+Phase 7は手動購入とRESPEC確認UIを接続する。保存移行・不正台帳修復はPhase 8、×MAX/自動購入は対象外。
 
 ## 乱数とテスト
 

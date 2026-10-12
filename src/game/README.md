@@ -4,6 +4,7 @@
 通常独立抽選・H1/H2と基本戦闘・3共鳴・追加効果・単一/一括PULLエンジンを実装済み。
 手動SPECIAL・固定回数の×MAXと再開・Stage20以降のJACKPOTも実装済み。
 特殊ボス補正、Stage解放、フォーカス変更、Stage50クリアと51以降の継続もコアに実装済み。
+RS手動1Lv購入、価格/購入情報、支払台帳と無料の全額返還RESPECも実装済み。
 UI・保存への接続はなく、未実装関数のダミーや空モジュールは置かない。
 
 | モジュール | 責務 |
@@ -17,7 +18,7 @@ UI・保存への接続はなく、未実装関数のダミーや空モジュー
 | progression.ts（実装済み） | isFeatureUnlocked / isUpgradeUnlocked / setFocus / hasClearedGame：最高Stageによる解放・クリア状態取得とFocus変更 |
 | engine.ts（実装済み） | createInitialGameState、executeNormalPull(s) / resumePendingNormalPulls、executeSpecialPull(s) / resumePendingSpecialPulls：実PULL確定・キュー・上限・集計・再開 |
 | validation.ts（実装済み） | コア数値・スタック・一時効果・JACKPOT区間・NORMAL/SPECIALキューの整合性。保存JSONのスキーマ検証は担当しない |
-| upgrades.ts（未実装） | 手動購入、価格、支払済みRS、RESPEC |
+| upgrades.ts（実装済み） | calculateUpgradeCost / getUpgradeInfo / purchaseUpgrade / respecUpgrades：1Lv価格、購入情報、原子的な手動購入と支払台帳・全額RESPEC |
 
 詳細: [技術設計](../../docs/TECHNICAL_DESIGN.md)。
 
@@ -41,4 +42,14 @@ resolveResonancesは末尾の任意stage（既定1）で元ボスの共鳴補正
 NORMAL/SPECIALも元Stageの補正を適用し、JACKPOTは独立する。全討伐遷移はPULL終了後。
 初回Stage50撃破はboss-defeated → game-cleared → stage-started(51)。hasClearedGameはhighestStage>=51を判定する。
 バッチsummary.clearedGameは当該呼び出しのクリア発生のみを示し、分割集計はORで結合する。
-クリア後も予約を継続し、51以降は通常倍率。UI・保存・購入は後続フェーズ。
+クリア後も予約を継続し、51以降は通常倍率。UI・保存は後続フェーズ。
+
+`getUpgradeInfo(state, upgrade)`は現Lv・次価格・解放可否・保有RS・対象支払額・購入可否と理由を返す。
+理由はPENDING_PULLS、LOCKED、NUMERIC_LIMIT、INSUFFICIENT_RSの順で判定し、購入可能ならnull。不正stateはRangeError。
+`calculateUpgradeCost(upgrade, currentLevel)`は既存UPGRADE_RULESのceil価格。過大価格はRangeError、情報取得時の次価格はnullになる。
+`purchaseUpgrade(state, upgrade)`はRS/Lv/台帳を同時更新し、`respecUpgrades(state)`は実支払台帳を全返還してLv/台帳をゼロにする。
+どちらも新GameStateを返し、RNG不要。保留NORMAL/CHAIN/SPECIAL中は拒否し、完了後のみ許可する。
+Lv・台帳の明らかな矛盾と合計の安全整数を検証し、それ以上の台帳は実績として信頼する（GAME_SPEC第18章）。
+変更対象のLv/台帳は新オブジェクト、他の戦闘ネスト値は不変スナップショットとして共有する。直接編集する前にコピーする。
+既存engineは次のPULLから新Lvを参照するため、独立した倍率や戦闘への特別な反映処理は持たない。
+UIの購入・RESPEC確認はPhase 7、保存スキーマ/移行/破損修復はPhase 8。強化×MAX・自動購入は実装しない。
