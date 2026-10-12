@@ -3,6 +3,7 @@ import { createBattleController } from '../ui/battleController'
 import { createCheckpointRandom } from './random'
 import { openLocalSave } from './localSave'
 import { createAutosave } from './autosave'
+import { createSaveManagement } from './saveManagement'
 
 /** Called once before React renders, never from render/Effect/state updaters. */
 export function createBrowserSession() {
@@ -13,5 +14,7 @@ export function createBrowserSession() {
   })
   const controller = createBattleController({ initialState: saved?.state ?? createInitialGameState(),
     settings: saved?.settings, checkpointRandom })
-  return { controller, persistence: createAutosave(controller, adapter, { window, document }) }
+  const persistence = createAutosave(controller, adapter, { window, document })
+  const management = createSaveManagement(controller, persistence, () => window.localStorage, () => window.location.reload())
+  return { controller, persistence, management }
 }

@@ -425,7 +425,7 @@ Stage整数、有限HP、スタック0〜12、CATALYST/BOOST0〜3、非負整数
 JACKPOT区間0〜99、既知の属性/フォーカス、設定、未消化キューの整合性を検証する。
 Stage 50以降は第17章の継続プレイ規則を反映する。GAUGEのゲーム上の上限は設けず、既存の安全数値境界とキュー/解放/クリア状態の整合性を保存検証へ反映する。
 将来versionは上書きせずエラーを表示し、既知の旧versionのみ明示的に移行する。
-openLocalSaveはStorage I/Oを注入可能。保存なしと読込拒否/破損/未来版を区別し、後者は新規ゲームを起動しても保存停止とする。削除・初期化の復旧UIは8-Cまで提供しない。
+openLocalSaveはStorage I/Oを注入可能。保存なしと読込拒否/破損/未来版を区別し、後者は新規ゲームを起動しても保存停止とする。8-Cでは明示確認付きのImport/削除で復旧できる。
 
 createAutosaveはControllerのcheckpoint参照が変わった時だけ500msデバウンスを開始し、連続更新中も最初の未保存から2秒を上限としてflushする。
 予約/設定を含む固定サイズの最新1件だけを保持し、保存時にlive RNGを取得しない。毎PULL/毎チャンクで書き込まない。
@@ -435,8 +435,21 @@ AppのEffectはconnect/cleanupだけを行い、StrictModeでも起動時ロー�
 別タブのstorageイベント（同じStorage/キーまたはclear）を検出すると保存を停止する。書込直前にも現在のraw JSONと読込時/直前成功書込値を比較し、イベント到着前の上書きを防ぐ。
 タブ間の自動マージ・完全排他は行わない。比較→書込はlocalStorageの原子的CASではなく、複数タブの真に同時な書込の競合を完全には排除できない。競合後は再読込し最新データを確認する。
 SaveStatusは復元/保存待ち/保存中/保存済み/失敗/保存停止を表示。ResultEffectsはControllerの設定を受け取り、旧スキップ状態を保存しない。
-Export/Import・削除/復旧UIは8-C。Importは検証後のstate/RNG/settingsの一括置換と、元データ保護を別途実装する。
-8-CではImport前の厳密検証と利用者確認、削除/初期化確認、破損データ・別タブ競合からの明示的復旧を実装する。Import直後に旧checkpointの遅延保存が新状態を上書きしないよう、保存タイマー/購読と保存先の比較基準を含めて切り替える。復元した過去のハイライト・クリア演出は再発行しない。
+### Phase 8-C：セーブ管理（Issue #27、実装済み）
+
+createBrowserSessionはController/Autosaveに加えcreateSaveManagementを作成し、Appのセーブ管理セクションへ渡す。ゲームコアの変更なし。
+
+- exportCurrentは現在の確定checkpointをserializeSaveDataで検証してJSON化する。保存先が古い/blockedでも画面の最新確定結果を出力する。busy中は拒否。backupRawは保存先の文字列をそのまま未検証バックアップにし、取得できない場合は明示エラー。
+- downloadSaveは日時付きファイル名でBlob/object URLを使ってローカルダウンロードを開始し、リンクとURLを解放する。未検証データはUNVERIFIED名と警告で区別する。
+- prepareImportは128 KiBのバイト上限を読込前に確認→File.text→deserializeSaveDataの65,536 UTF-16コード単位上限/完全検証→プレビューを返す。読込例外/不正JSON/未来版/台帳/RNGの不整合では変更しない。非同期読込中にcheckpointが変化した場合も拒否する。
+- prepareDeleteもImportと同じ確認トークンを発行する。トークンは最新checkpoint参照と現在の保存rawを固定し、管理APIが所有するものだけを受け付ける。Import用の私有データと表示用コピーを分離する。
+- 確認ダイアログは現在/対象のStage・最高Stage・RS・3強化Lv・基本/CHAIN/SPECIAL保留・演出軽減を表示する。取消/Escは管理操作による書込みなし。native modal・Tab循環・元要素へのフォーカス復帰を使用する。busyは拒否し、保留中の置換は明示確認でのみ許可する。
+
+confirmは最新checkpoint/busyを再確認し、Autosave.suspendでタイマーとflushを停止→現在rawとの再照合→検証済みsetItemまたは対象キーだけremoveItem→Autosave.retireで購読/離脱リスナーを破棄→ページ再読込、の順で同期実行する。失敗時はstate/rawを維持してresumeし、通常保存を継続する。成功後の旧cleanup/flush/connectも保存できない。二重確定も拒否する。
+
+正常なAutosaveが確認中にrawを変更した場合も再確認を要求する。別タブ競合・破損/未来版のblockedを通常保存用に解除せず、確認済みrawへの専用置換だけを許可する。比較と書込みに原子的CASがない制約は維持する。読取/書込/削除が拒否される環境では復旧成功を装わない。
+
+新セッションは通常起動と同じ検証経路でstate/RNG/settingsを復元し、保留PULLは手動再開する。削除後は新seed/初期状態で開始し、通常の自動保存が働く。過去のsummary/highlight/クリア演出は再発行しない。
 
 ## CIとGitHub Pages
 
