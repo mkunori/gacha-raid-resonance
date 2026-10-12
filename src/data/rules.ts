@@ -1,4 +1,4 @@
-import type { AdditionalEffect, Element, Focus, Rarity, SpecialResult, Upgrade } from '../types/game'
+import type { AdditionalEffect, Element, Focus, Rarity, Resonance, SpecialResult, Upgrade } from '../types/game'
 
 /** v0.6 values only; these definitions do not implement gameplay. */
 export const NORMAL_RARITIES = {
@@ -65,3 +65,18 @@ export const UNLOCK_STAGES = {
   resonancePower: 6, focus: 6, specialPower: 8, specialMax: 10,
   normal100: 15, jackpot: 20, normal1000: 50,
 } as const
+
+export const RESONANCE_PAIRS = {
+  FLAME_STORM: ['FIRE', 'WIND'],
+  THUNDER_STORM: ['WIND', 'THUNDER'],
+  OVERLOAD: ['THUNDER', 'FIRE'],
+} as const satisfies Record<Resonance, readonly [Element, Element]>
+
+export const RESONANCE_ORDER = ['FLAME_STORM', 'THUNDER_STORM', 'OVERLOAD'] as const
+
+export const FOCUS_RESONANCE = {
+  BALANCED: null,
+  FIRE_WIND: 'FLAME_STORM',
+  WIND_THUNDER: 'THUNDER_STORM',
+  THUNDER_FIRE: 'OVERLOAD',
+} as const satisfies Record<Focus, Resonance | null>

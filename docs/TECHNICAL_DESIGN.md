@@ -1,6 +1,6 @@
-# 技術設計（初期基盤）
+# 技術設計
 
-基準: [GAME_SPEC v0.6](GAME_SPEC.md)、[親Issue #1](https://github.com/mkunori/gacha-raid-resonance/issues/1)。
+仕様の正本: [GAME_SPEC v0.6](GAME_SPEC.md)。[Issue #1](https://github.com/mkunori/gacha-raid-resonance/issues/1)はCLOSEDの仕様作成履歴。
 本書の将来設計は実装済み機能ではない。ゲームの数値・解放順・1PULL順序はGAME_SPECを正とする。
 
 ## 構成
@@ -11,13 +11,14 @@ docs/                   仕様、設計、段階的な計画
 src/
   components/           表示と操作のコンポーネント
   data/rules.ts         v0.6確率・倍率・コスト・解放設定（初期定義）
-  game/                 通常抽選・H1実装済み。他のコアは後続PRで追加
+  game/                 通常抽選・H1・基本戦闘・単一PULL実装済み
     gacha.ts            独立抽選とH1スタック加算
-    resonance.ts        共鳴
-    combat.ts           ダメージ
-    boss.ts             ボス・Stage進行
-    upgrades.ts         購入・RESPEC
-    engine.ts           逐次処理と状態確定
+    resonance.ts        3共鳴・予約効果・反復判定
+    combat.ts           基礎A・通常/共鳴ダメージ
+    boss.ts             通常ボス・PULL終了後のStage進行
+    validation.ts       数値・スタック・一時効果の検証
+    upgrades.ts         購入・RESPEC（未実装）
+    engine.ts           初期状態・単一PULLの統合
   storage/              今回は責務READMEのみ。保存アダプターは後続
   types/game.ts         UI非依存の型契約案
   test/                 テスト専用の固定列・固定シードRNG
@@ -27,7 +28,8 @@ src/
 ```
 
 不要な空モジュール・ゲームエンジン・状態管理ライブラリは追加しない。
-特殊ボス表・共鳴ペア優先順位など、今回未定義の設定は各機能の実装PRでsrc/dataに追加し、GAME_SPECとの照合テストを行う。
+共鳴ペアとフォーカス優先・固定順はsrc/data/rules.tsに集約済み。
+特殊ボス表など未定義の設定は各機能の実装PRでsrc/dataに追加し、GAME_SPECとの照合テストを行う。
 
 ## Reactの責務と状態の境界
 
@@ -61,12 +63,12 @@ function execute(state: GameState, action: GameAction, rng: RandomSource): Engin
 GameActionは通常抽選、SPECIAL、強化、振り直し、フォーカス切替。
 GameEventは抽選結果、チャネル別ダメージ、共鳴、討伐、報酬、解放等の判別共用体を想定。
 入力を破壊せず新状態を返す。時計・localStorage・React・ネットワークを参照しない。
-具体的なイベントとアクションの型は利用するPRで追加する。
+Phase 2ではCombatEvent / CombatResultを実装済み。汎用GameActionは必要なアクション追加時に導入する。
 
 ## 抽選とダメージの分離
 
 gachaはRNGから属性・レアリティ・追加効果をそれぞれ独立に抽選し、NormalPullResultを返す。
-通常抽選とH1の公開APIは実装済み。以下の戦闘・SPECIAL・engineは後続PRの設計である。
+通常抽選・H1・基本戦闘・単一PULLは実装済み。SPECIAL・H2・追加効果・一括engineは後続PRの設計である。
 
 ### 通常ガチャの公開API（Issue #3）
 
@@ -86,17 +88,55 @@ gachaはRNGから属性・レアリティ・追加効果をそれぞれ独立に
 - Stage解放ガード、共鳴消費、H2、CHAIN/CHARGE/BOOSTの発動、ダメージ、保存は担当しない。
   両APIはReact・ストレージ・Math.randomに依存しない。
 
-### 後続の戦闘計算
+### 戦闘計算と後続機能
 
 SPECIALの結果も独立した抽選関数とする。抽選関数はHPを変更しない。
 combatは確定結果とA・一時効果・ボス補正からダメージを計算し、乱数を使わない。
 チャネルは通常／共鳴／SPECIAL／JACKPOTを明示し、JACKPOTに通常耐性を誤適用しない。
 HP/RS/価格は仕様のceilのみ、ダメージは途中丸めせず、表示のみ丸める。
 
-engineはGAME_SPEC第7章の8ステップを唯一の通常PULL経路として反復する。
-SSRのCATALYSTは共鳴前、BOOST取得は共鳴後、討伐遷移はJACKPOT処理後。
+単一PULL engineは抽選→通常攻撃→H1→基本共鳴→基本ゲージ→追加効果未適用イベント→討伐確定の順で処理する。
+後続でGAME_SPEC第7章の全8ステップを組み込む際、SSRのCATALYSTは共鳴前、BOOST取得は共鳴後、討伐遷移はJACKPOT処理後とする。
 余剰ダメージは捨て、未実行PULLは次Stageへ。共鳴ループにはガードを持つ。
 BOOST/THUNDER/FLAME/属性スタックを討伐で初期化し、CATALYST/GAUGE/JACKPOT区間は保持する。
+
+### Phase 2の公開APIと状態契約（Issue #5）
+
+| モジュール / API | 入力 → 出力 / 責務 |
+| --- | --- |
+| combat.calculateAttack | PULL POWER Lv → 基礎A |
+| combat.calculateNormalDamage | A、rarity、FLAME有効フラグ、任意ボス倍率（既定1） → 通常ダメージ |
+| combat.calculateResonanceDamage | A、RESONANCE POWER Lv、その他倍率、任意ボス倍率（既定1） → 共鳴ダメージ |
+| boss.calculateBossMaxHp / calculateBossReward | 正整数Stage → ceilしたHP / RS |
+| boss.applyBossDamage | 現HP、非負ダメージ → 丸めない残HP（PULL内は負値を許容） |
+| boss.finishBossDefeat | 検証済みGameState → CombatResult。生存中は遷移なし、HP<=0なら1回だけ報酬/次Stage |
+| resonance.findNextResonance | スタック、Focus → 次の共鳴またはnull |
+| resonance.resolveResonances | スタック、一時状態、Focus、A、共鳴Lv → 新スタック/一時状態、ゲージ増分、発動順の共鳴/ダメージ |
+| engine.createInitialGameState | 引数なし → 独立した初期GameState（Stage 1、強化Lv0、基本値はrulesを参照） |
+| engine.executeNormalPull | GameState、RNG → CombatResult（新stateと順序付きCombatEvent[]） |
+
+executeNormalPullは入力を検証後、既存drawNormalPullを呼び、正常時は乱数3回だけ消費する。
+HP>0かつStage最大HP以下の確定状態を要求し、死亡途中状態の再入力による二重報酬を拒否する。
+全てのPULL内ダメージは元のStageに属する。イベントのdamageは計算値で、残HPで切り詰めた値ではない。
+討伐イベントとStage開始イベントは追加効果未適用イベントの後。次Stageは常に最大HPから開始する。
+入力の各ネスト状態をコピーし、失敗時も呼出元の状態を変更しない。ただし消費済みRNGは巻き戻せない。
+データ型そのもののJSONスキーマ検証は保存フェーズで扱い、このAPIはGameState型を前提に数値・列挙値のドメインを検証する。
+
+FLAMEは今回共鳴×1.5と次の10通常PULL×1.15。通常攻撃で旧残回数を減らした後、共鳴で残回数10へ更新する。
+THUNDERは既存予約を現在共鳴で使って消費してから、THUNDERであれば新しい予約を1つ残す。
+同一PULL内の次共鳴にも効く。OVERLOADは1発ごとに+12。
+反復上限はスタック総上限/(3+3)から導出し、ゼロダメージでもスタック消費により必ず終了する。
+BOOSTやCATALYSTは有効な既存値を保持するが、取得・消費・ダメージ適用は行わない。
+討伐時は属性とBOOST/THUNDER/FLAMEをリセットし、ゲージ・CATALYST・フォーカス・強化・支払台帳・キュー・JACKPOT区間は保持する。
+更新する統計は通常PULL、SSR、種類別共鳴、討伐数と最高Stageのみ。他機能の統計は保持する。
+
+Phase 2では全Stageが通常ボス倍率1.0。特殊ボスはPhase 5でチャネル別の倍率選択を接続する。
+Stage 50撃破後は共通のStage+1を行い、終了状態を仮実装しない。最終仕様確定時の変更はboss.tsに局所化する。
+ゲージはゲーム上の上限なし。資源/カウンター/Stage/Lvは安全整数、ダメージ・HPは有限で絶対値MAX_SAFE_INTEGER以下を要求する。
+HPとダメージの小数は保持し、途中整数丸めをしない。数値演算が検証範囲を越えた場合はRangeErrorで結果全体を返さず停止する。
+これはバランス上限ではなくJavaScript numberの数値安全境界であり、無限成長に対応する場合は数値表現を別途設計する。
+
+### 後続の一括処理
 
 CHAINの安全上限100,000では未実行の個数をpendingNormalPullsに残し、
 1PULL終了ごとの一貫した状態を確定する設計案。通常の分割実行では同じRNGストリームを維持する。
@@ -130,7 +170,7 @@ JACKPOT区間0〜99、既知の属性/フォーカス、設定、未消化キュ
 ストレージ容量超過や利用拒否は捕捉し、保存失敗をUIに表示する。
 Exportは確定した版付きJSON、Importはパース・完全検証後に確認して置換する。
 削除とRESPECも確認を必要とし、RESPECは支払済みRSを返却して台帳をゼロにする。
-今回は保存機能も初期GameState生成も未実装。
+初期GameState生成はengine.tsで実装済み。保存機能は未実装。
 
 ## CIとGitHub Pages
 

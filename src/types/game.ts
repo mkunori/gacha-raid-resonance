@@ -1,4 +1,4 @@
-/** Core contracts only. Gameplay and persistence are implemented in later PRs. */
+/** UI-independent core contracts. Persistence and later features remain separate. */
 export type Element = 'FIRE' | 'WIND' | 'THUNDER'
 export type Rarity = 'N' | 'R' | 'SR' | 'SSR'
 export type AdditionalEffect = 'NONE' | 'CHAIN' | 'CHARGE' | 'BOOST'
@@ -53,4 +53,18 @@ export interface SaveDataV1 {
   saveVersion: 1
   state: GameState
   settings: DisplaySettings
+}
+
+export type CombatEvent =
+  | { type: 'normal-pull'; stage: number; result: NormalPullResult }
+  | { type: 'normal-damage'; stage: number; damage: number }
+  | { type: 'resonance'; stage: number; resonance: Resonance; damage: number }
+  | { type: 'gauge-gained'; stage: number; amount: number; source: 'normal' | 'overload' }
+  | { type: 'additional-effect'; stage: number; effect: AdditionalEffect; applied: false }
+  | { type: 'boss-defeated'; stage: number; reward: number }
+  | { type: 'stage-started'; stage: number; maxHp: number }
+
+export interface CombatResult {
+  state: GameState
+  events: CombatEvent[]
 }
