@@ -19,7 +19,13 @@ export function applyBossDamage(hp: number, damage: number): number {
   return finiteNumber(hp - damage, 'remaining boss HP', -Number.MAX_SAFE_INTEGER)
 }
 
-/** Call only at the end of a pull. No Stage 50 terminal policy is imposed. */
+/**
+ * Call only at the end of a pull. No Stage 50 terminal policy is imposed.
+ * Never mutates input. A living boss returns the identical state reference.
+ * On defeat, unchanged nested fields are structurally shared with input.
+ * Treat input/output as immutable snapshots; clone before imperative edits.
+ * executeNormalPull supplies its own detached working state at this boundary.
+ */
 export function finishBossDefeat(state: GameState): CombatResult {
   safeInteger(state.stage, 'stage', 1)
   finiteNumber(state.bossHp, 'boss HP', -Number.MAX_SAFE_INTEGER)

@@ -41,6 +41,32 @@ describe('v0.6 boss and damage formulas', () => {
     expect(finishBossDefeat(result.state).events).toEqual([])
     expect(dead.resonanceShards).toBe(0)
   })
+  it('shares a living snapshot by identity; callers clone before imperative edits', () => {
+    const input = createInitialGameState()
+    const before = structuredClone(input)
+    const result = finishBossDefeat(input)
+    expect(result.state).toBe(input)
+    expect(result.state.stacks).toBe(input.stacks)
+    expect(result.events).toEqual([])
+    expect(input).toEqual(before)
+    const editable = structuredClone(result.state)
+    editable.bossHp = 1
+    editable.stacks.FIRE = 12
+    expect(input).toEqual(before)
+  })
+  it('creates defeat fields without mutation while sharing unchanged nested snapshots', () => {
+    const input = createInitialGameState()
+    input.bossHp = 0
+    const before = structuredClone(input)
+    const result = finishBossDefeat(input)
+    expect(input).toEqual(before)
+    expect(result.state).not.toBe(input)
+    expect(result.state.stacks).not.toBe(input.stacks)
+    expect(result.state.temporary).not.toBe(input.temporary)
+    expect(result.state.statistics).not.toBe(input.statistics)
+    expect(result.state.upgradeLevels).toBe(input.upgradeLevels)
+    expect(result.state.statistics.resonanceCounts).toBe(input.statistics.resonanceCounts)
+  })
 })
 
 describe('numeric guards', () => {

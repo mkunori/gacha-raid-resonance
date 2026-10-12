@@ -109,7 +109,7 @@ BOOST/THUNDER/FLAME/属性スタックを討伐で初期化し、CATALYST/GAUGE/
 | combat.calculateResonanceDamage | A、RESONANCE POWER Lv、その他倍率、任意ボス倍率（既定1） → 共鳴ダメージ |
 | boss.calculateBossMaxHp / calculateBossReward | 正整数Stage → ceilしたHP / RS |
 | boss.applyBossDamage | 現HP、非負ダメージ → 丸めない残HP（PULL内は負値を許容） |
-| boss.finishBossDefeat | 検証済みGameState → CombatResult。生存中は遷移なし、HP<=0なら1回だけ報酬/次Stage |
+| boss.finishBossDefeat | 検証済みGameState → CombatResult。生存中は同一state参照・空イベント、HP<=0なら1回だけ報酬/次Stage |
 | resonance.findNextResonance | スタック、Focus → 次の共鳴またはnull |
 | resonance.resolveResonances | スタック、一時状態、Focus、A、共鳴Lv → 新スタック/一時状態、ゲージ増分、発動順の共鳴/ダメージ |
 | engine.createInitialGameState | 引数なし → 独立した初期GameState（Stage 1、強化Lv0、基本値はrulesを参照） |
@@ -119,7 +119,11 @@ executeNormalPullは入力を検証後、既存drawNormalPullを呼び、正常�
 HP>0かつStage最大HP以下の確定状態を要求し、死亡途中状態の再入力による二重報酬を拒否する。
 全てのPULL内ダメージは元のStageに属する。イベントのdamageは計算値で、残HPで切り詰めた値ではない。
 討伐イベントとStage開始イベントは追加効果未適用イベントの後。次Stageは常に最大HPから開始する。
-入力の各ネスト状態をコピーし、失敗時も呼出元の状態を変更しない。ただし消費済みRNGは巻き戻せない。
+executeNormalPullは入力の各ネスト状態をコピーし、失敗時も呼出元の状態を変更しない。ただし消費済みRNGは巻き戻せない。
+finishBossDefeat単体は入力を変更しないが、生存時は入力そのものを返し、討伐時も未変更のネスト値は参照共有する。
+呼び出し側は入出力を不変のスナップショットとして扱う。返却stateを直接編集すると共有元にも影響するため、
+命令的な編集が必要ならstructuredClone等でコピーしてから編集する。
+executeNormalPullは既に分離した作業状態をfinishBossDefeatへ渡すため、元の呼出元GameStateとの共有はない。
 データ型そのもののJSONスキーマ検証は保存フェーズで扱い、このAPIはGameState型を前提に数値・列挙値のドメインを検証する。
 
 FLAMEは今回共鳴×1.5と次の10通常PULL×1.15。通常攻撃で旧残回数を減らした後、共鳴で残回数10へ更新する。
